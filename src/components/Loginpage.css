@@ -272,3 +272,16 @@
   .login-title { font-size: 22px; }
   .logo-img { width: 150px; }
 }
+
+/* ── Error Banner ── */
+.error-message-banner {
+  background: rgba(234, 67, 53, 0.15);
+  border: 1px solid rgba(234, 67, 53, 0.3);
+  color: #ff8b80;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  text-align: center;
+  margin-bottom: 4px;
+}
+

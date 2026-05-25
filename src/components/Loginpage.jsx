@@ -1,15 +1,37 @@
 import React, { useState } from 'react';
 import './Loginpage.css';
 import logoImg from '../assets/images/HomeScreen.png';
+import { auth } from '../firebase';
+import { signInWithEmailAndPassword } from 'firebase/auth';
 
 const Loginpage = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    console.log('Login with:', email, password);
+    setError('');
+    setLoading(true);
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+      console.log('Successfully signed in!');
+    } catch (err) {
+      console.error('Firebase Auth Error:', err);
+      let message = 'Failed to sign in. Please try again.';
+      if (err.code === 'auth/invalid-credential') {
+        message = 'Invalid email or password.';
+      } else if (err.code === 'auth/user-not-found') {
+        message = 'No account found with this email.';
+      } else if (err.code === 'auth/wrong-password') {
+        message = 'Incorrect password.';
+      }
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleGoogleLogin = () => {
@@ -53,6 +75,8 @@ const Loginpage = () => {
 
         {/* Login Form */}
         <form className="login-form" onSubmit={handleLogin}>
+          {error && <div className="error-message-banner">{error}</div>}
+
           {/* Email Field */}
           <div className="input-group">
             <label htmlFor="email" className="input-label">Email Address</label>
@@ -68,6 +92,7 @@ const Loginpage = () => {
                 placeholder="you@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                disabled={loading}
                 required
               />
             </div>
@@ -88,6 +113,7 @@ const Loginpage = () => {
                 placeholder="Enter your password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                disabled={loading}
                 required
               />
               <button
@@ -96,6 +122,7 @@ const Loginpage = () => {
                 onClick={() => setShowPassword(!showPassword)}
                 id="toggle-password-btn"
                 aria-label="Toggle password visibility"
+                disabled={loading}
               >
                 {showPassword ? (
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -116,19 +143,21 @@ const Loginpage = () => {
           {/* Forgot Password */}
           <div className="forgot-row">
             <label className="remember-label">
-              <input type="checkbox" id="remember-me" className="remember-checkbox" />
+              <input type="checkbox" id="remember-me" className="remember-checkbox" disabled={loading} />
               <span>Remember me</span>
             </label>
             <a href="#" className="forgot-link" id="forgot-password-link">Forgot Password?</a>
           </div>
 
           {/* Login Button */}
-          <button type="submit" className="login-btn" id="login-submit-btn">
-            <span>Sign In</span>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <line x1="5" y1="12" x2="19" y2="12"/>
-              <polyline points="12,5 19,12 12,19"/>
-            </svg>
+          <button type="submit" className="login-btn" id="login-submit-btn" disabled={loading}>
+            <span>{loading ? 'Signing In...' : 'Sign In'}</span>
+            {!loading && (
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <line x1="5" y1="12" x2="19" y2="12"/>
+                <polyline points="12,5 19,12 12,19"/>
+              </svg>
+            )}
           </button>
         </form>
 
