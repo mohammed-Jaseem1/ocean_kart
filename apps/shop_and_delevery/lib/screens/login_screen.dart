@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'registration_page.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -15,7 +16,6 @@ class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   
   bool _isLoading = false;
-  bool _isSignUp = false; // Toggle between login and registration
   bool _obscurePassword = true;
   String? _errorMessage;
 
@@ -38,31 +38,26 @@ class _LoginScreenState extends State<LoginScreen> {
     final password = _passwordController.text.trim();
 
     try {
-      if (_isSignUp) {
-        // Register a new user
-        final UserCredential userCredential = await FirebaseAuth.instance
-            .createUserWithEmailAndPassword(email: email, password: password);
-        
-        // Write their user profile to Firestore
-        if (userCredential.user != null) {
-          await FirebaseFirestore.instance
-              .collection('users')
-              .doc(userCredential.user!.uid)
-              .set({
-            'uid': userCredential.user!.uid,
-            'email': email,
-            'name': email.split('@')[0],
-            'role': 'delivery_partner', // Assign role automatically
-            'createdAt': FieldValue.serverTimestamp(),
-            'status': 'active',
-          });
+      // Sign in existing user
+      final UserCredential userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+
+      // Fetch user profile to check status
+      if (userCredential.user != null) {
+        final doc = await FirebaseFirestore.instance.collection('users').doc(userCredential.user!.uid).get();
+        if (doc.exists) {
+          final data = doc.data() as Map<String, dynamic>;
+          if (data['status'] == 'pending') {
+            await FirebaseAuth.instance.signOut();
+            setState(() {
+              _errorMessage = 'Your account is pending admin approval.';
+              _isLoading = false;
+            });
+            return;
+          }
         }
-      } else {
-        // Sign in existing user
-        await FirebaseAuth.instance.signInWithEmailAndPassword(
-          email: email,
-          password: password,
-        );
       }
     } on FirebaseAuthException catch (e) {
       setState(() {
@@ -139,10 +134,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      Text(
-                        _isSignUp ? 'Create Delivery Account' : 'OceanKart Delivery',
+                      const Text(
+                        'OceanKart Delivery',
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
@@ -151,9 +146,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        _isSignUp
-                            ? 'Sign up to register as an active delivery driver'
-                            : 'Sign in to manage shops and delivery trips',
+                        'Sign in to manage shops and delivery trips',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 14,
@@ -294,9 +287,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                   valueColor: AlwaysStoppedAnimation<Color>(darkBackground),
                                 ),
                               )
-                            : Text(
-                                _isSignUp ? 'Create Account' : 'Sign In',
-                                style: const TextStyle(
+                            : const Text(
+                                'Sign In',
+                                style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
                                   letterSpacing: 0.5,
@@ -305,22 +298,22 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 16),
 
-                      // Toggle between Login & SignUp modes
+                      // Navigate to RegistrationPage
                       TextButton(
                         onPressed: () {
-                          setState(() {
-                            _isSignUp = !_isSignUp;
-                            _errorMessage = null;
-                          });
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const RegistrationPage(),
+                            ),
+                          );
                         },
                         style: TextButton.styleFrom(
                           foregroundColor: primaryBlue,
                         ),
-                        child: Text(
-                          _isSignUp
-                              ? 'Already have an account? Sign In'
-                              : 'Don\'t have an account? Sign Up',
-                          style: const TextStyle(
+                        child: const Text(
+                          'Don\'t have an account? Sign Up',
+                          style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 14,
                           ),

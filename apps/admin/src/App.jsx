@@ -3,6 +3,8 @@ import { onAuthStateChanged, signOut } from 'firebase/auth'
 import { auth } from './firebase'
 import Homepage from './components/Homepage'
 import Loginpage from './components/Loginpage'
+import UserApprovals from './components/UserApprovals';
+
 import './App.css'
 
 function App() {

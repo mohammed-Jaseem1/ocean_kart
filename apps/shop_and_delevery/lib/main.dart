@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'screens/login_screen.dart';
 import 'screens/dashboard_screen.dart';
+import 'screens/delivery_boy.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -67,9 +69,37 @@ class AuthGate extends StatelessWidget {
           );
         }
 
-        // If the user has active session, show Dashboard
+        // If the user has active session, show the correct Dashboard based on role
         if (snapshot.hasData) {
-          return const DashboardScreen();
+          return FutureBuilder<DocumentSnapshot>(
+            future: FirebaseFirestore.instance.collection('users').doc(snapshot.data!.uid).get(),
+            builder: (context, userSnapshot) {
+              if (userSnapshot.connectionState == ConnectionState.waiting) {
+                return const Scaffold(
+                  backgroundColor: Color(0xFF0A1628),
+                  body: Center(
+                    child: CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00B4D8)),
+                    ),
+                  ),
+                );
+              }
+              
+              if (userSnapshot.hasData && userSnapshot.data!.exists) {
+                final userData = userSnapshot.data!.data() as Map<String, dynamic>?;
+                final role = userData?['role'];
+                
+                if (role == 'Delivery Boy') {
+                  return const DeliveryBoyDashboard();
+                } else {
+                  return const DashboardScreen();
+                }
+              }
+              
+              // Fallback to default dashboard if document not found
+              return const DashboardScreen();
+            },
+          );
         }
 
         // Otherwise, show LoginScreen

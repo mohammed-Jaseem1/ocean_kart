@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'user_registration.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -15,7 +17,6 @@ class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   
   bool _isLoading = false;
-  bool _isSignUp = false; // Toggle between login and registration
   bool _obscurePassword = true;
   String? _errorMessage;
 
@@ -38,32 +39,11 @@ class _LoginScreenState extends State<LoginScreen> {
     final password = _passwordController.text.trim();
 
     try {
-      if (_isSignUp) {
-        // Register a new user
-        final UserCredential userCredential = await FirebaseAuth.instance
-            .createUserWithEmailAndPassword(email: email, password: password);
-        
-        // Write their user profile to Firestore
-        if (userCredential.user != null) {
-          await FirebaseFirestore.instance
-              .collection('users')
-              .doc(userCredential.user!.uid)
-              .set({
-            'uid': userCredential.user!.uid,
-            'email': email,
-            'name': email.split('@')[0],
-            'role': 'customer', // Assign role customer automatically
-            'createdAt': FieldValue.serverTimestamp(),
-            'status': 'active',
-          });
-        }
-      } else {
-        // Sign in existing user
-        await FirebaseAuth.instance.signInWithEmailAndPassword(
-          email: email,
-          password: password,
-        );
-      }
+      // Sign in existing user
+      await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
     } on FirebaseAuthException catch (e) {
       setState(() {
         if (e.code == 'user-not-found') {
@@ -83,6 +63,194 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       setState(() {
         _errorMessage = 'An error occurred. Please try again later.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _signInWithGoogle() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      UserCredential userCredential;
+
+      if (kIsWeb) {
+        // For Flutter Web, we use GoogleAuthProvider directly
+        GoogleAuthProvider googleProvider = GoogleAuthProvider();
+        userCredential = await FirebaseAuth.instance.signInWithPopup(googleProvider);
+      } else {
+        // For iOS/Android, GoogleAuthProvider also works directly in newer SDKs
+        GoogleAuthProvider googleProvider = GoogleAuthProvider();
+        userCredential = await FirebaseAuth.instance.signInWithProvider(googleProvider);
+      }
+
+      if (userCredential.user != null) {
+        // Check if user exists in Firestore
+        final doc = await FirebaseFirestore.instance.collection('users').doc(userCredential.user!.uid).get();
+        if (!doc.exists) {
+          await FirebaseFirestore.instance.collection('users').doc(userCredential.user!.uid).set({
+            'uid': userCredential.user!.uid,
+            'email': userCredential.user!.email ?? '',
+            'name': userCredential.user!.displayName ?? 'Google User',
+            'role': 'customer',
+            'createdAt': FieldValue.serverTimestamp(),
+            'status': 'active',
+          });
+        }
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Google Sign-In failed: $e';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _signInWithPhone() async {
+    final phoneController = TextEditingController();
+    
+    // Show dialog to get phone number
+    final phone = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF132238),
+        title: const Text('Enter Phone Number', style: TextStyle(color: Colors.white)),
+        content: TextField(
+          controller: phoneController,
+          style: const TextStyle(color: Colors.white),
+          keyboardType: TextInputType.phone,
+          decoration: InputDecoration(
+            hintText: '+1 234 567 8900',
+            hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+            enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white)),
+            focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF00B4D8))),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, phoneController.text.trim()),
+            child: const Text('Send OTP', style: TextStyle(color: Color(0xFF00B4D8))),
+          ),
+        ],
+      ),
+    );
+
+    if (phone == null || phone.isEmpty) return;
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      await FirebaseAuth.instance.verifyPhoneNumber(
+        phoneNumber: phone,
+        verificationCompleted: (PhoneAuthCredential credential) async {
+          await _signInWithPhoneCredential(credential, phone);
+        },
+        verificationFailed: (FirebaseAuthException e) {
+          setState(() {
+            _errorMessage = 'Phone verification failed: ${e.message}';
+            _isLoading = false;
+          });
+        },
+        codeSent: (String verificationId, int? resendToken) async {
+          setState(() {
+            _isLoading = false;
+          });
+          // Show dialog to enter OTP
+          final otpController = TextEditingController();
+          final otp = await showDialog<String>(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => AlertDialog(
+              backgroundColor: const Color(0xFF132238),
+              title: const Text('Enter OTP', style: TextStyle(color: Colors.white)),
+              content: TextField(
+                controller: otpController,
+                style: const TextStyle(color: Colors.white),
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  hintText: '123456',
+                  hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+                  enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white)),
+                  focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF00B4D8))),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, otpController.text.trim()),
+                  child: const Text('Verify', style: TextStyle(color: Color(0xFF00B4D8))),
+                ),
+              ],
+            ),
+          );
+
+          if (otp != null && otp.isNotEmpty) {
+            setState(() {
+              _isLoading = true;
+            });
+            PhoneAuthCredential credential = PhoneAuthProvider.credential(
+              verificationId: verificationId,
+              smsCode: otp,
+            );
+            await _signInWithPhoneCredential(credential, phone);
+          }
+        },
+        codeAutoRetrievalTimeout: (String verificationId) {},
+      );
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'An error occurred: $e';
+      });
+    }
+  }
+
+  Future<void> _signInWithPhoneCredential(AuthCredential credential, String phone) async {
+    try {
+      final userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
+      if (userCredential.user != null) {
+        final doc = await FirebaseFirestore.instance.collection('users').doc(userCredential.user!.uid).get();
+        if (!doc.exists) {
+          await FirebaseFirestore.instance.collection('users').doc(userCredential.user!.uid).set({
+            'uid': userCredential.user!.uid,
+            'phone': phone,
+            'name': 'Phone User',
+            'role': 'customer',
+            'createdAt': FieldValue.serverTimestamp(),
+            'status': 'active',
+          });
+        }
+      }
+    } on FirebaseAuthException catch (e) {
+      setState(() {
+        _errorMessage = 'Phone Sign-In failed: ${e.message}';
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Phone Sign-In failed: $e';
       });
     } finally {
       if (mounted) {
@@ -139,10 +307,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      Text(
-                        _isSignUp ? 'Create User Account' : 'OceanKart Users',
+                      const Text(
+                        'OceanKart Users',
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
@@ -151,9 +319,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        _isSignUp
-                            ? 'Sign up to create your user account'
-                            : 'Sign in to access your user account',
+                        'Sign in to access your user account',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 14,
@@ -294,9 +460,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                   valueColor: AlwaysStoppedAnimation<Color>(darkBackground),
                                 ),
                               )
-                            : Text(
-                                _isSignUp ? 'Create Account' : 'Sign In',
-                                style: const TextStyle(
+                            : const Text(
+                                'Sign In',
+                                style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
                                   letterSpacing: 0.5,
@@ -307,23 +473,91 @@ class _LoginScreenState extends State<LoginScreen> {
 
                       TextButton(
                         onPressed: () {
-                          setState(() {
-                            _isSignUp = !_isSignUp;
-                            _errorMessage = null;
-                          });
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const UserRegistrationPage(),
+                            ),
+                          );
                         },
                         style: TextButton.styleFrom(
                           foregroundColor: primaryBlue,
                         ),
-                        child: Text(
-                          _isSignUp
-                              ? 'Already have an account? Sign In'
-                              : 'Don\'t have an account? Sign Up',
-                          style: const TextStyle(
+                        child: const Text(
+                          'Don\'t have an account? Sign Up',
+                          style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 14,
                           ),
                         ),
+                      ),
+                      const SizedBox(height: 16),
+                      
+                      Row(
+                        children: [
+                          Expanded(child: Divider(color: Colors.white.withOpacity(0.2))),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Text(
+                              'OR CONTINUE WITH',
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.5),
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          Expanded(child: Divider(color: Colors.white.withOpacity(0.2))),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _isLoading ? null : _signInWithGoogle,
+                              icon: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: const BoxDecoration(
+                                  color: Colors.white,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Text(
+                                  'G', 
+                                  style: TextStyle(
+                                    color: Colors.black, 
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  )
+                                ),
+                              ),
+                              label: const Text('Google', style: TextStyle(color: Colors.white)),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                side: BorderSide(color: Colors.white.withOpacity(0.2)),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _isLoading ? null : _signInWithPhone,
+                              icon: const Icon(Icons.phone_android, color: Colors.white, size: 20),
+                              label: const Text('Phone', style: TextStyle(color: Colors.white)),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                side: BorderSide(color: Colors.white.withOpacity(0.2)),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),

@@ -1,16 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'profile_dialog.dart';
-import 'add_product_screen.dart';
 
-class DashboardScreen extends StatelessWidget {
-  const DashboardScreen({super.key});
+class DeliveryBoyDashboard extends StatelessWidget {
+  const DeliveryBoyDashboard({super.key});
 
   @override
   Widget build(BuildContext context) {
     const navyBlue = Color(0xFF0A1628);
     const lightBlue = Color(0xFF00B4D8);
-    const backgroundWhite = Color(0xFFF5F7FA); // A light greyish white for modern contrast
+    const backgroundWhite = Color(0xFFF5F7FA);
 
     return Scaffold(
       backgroundColor: backgroundWhite,
@@ -18,7 +17,7 @@ class DashboardScreen extends StatelessWidget {
         backgroundColor: navyBlue,
         elevation: 0,
         title: const Text(
-          'Dashboard',
+          'Delivery Dashboard',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
         actions: [
@@ -61,13 +60,21 @@ class DashboardScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  const Text(
-                    'Ocean Fresh Fish Shop',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
+                  const Row(
+                    children: [
+                      Text(
+                        'Rahul ',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      Text(
+                        '👋',
+                        style: TextStyle(fontSize: 24),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 16),
                 ],
@@ -102,26 +109,26 @@ class DashboardScreen extends StatelessWidget {
                     childAspectRatio: 1.4,
                     children: [
                       _buildStatCard(
-                        title: 'Orders Today',
-                        value: '15',
-                        icon: Icons.shopping_bag_outlined,
+                        title: "Today's Deliveries",
+                        value: '8',
+                        icon: Icons.local_shipping_outlined,
                         color: lightBlue,
                       ),
                       _buildStatCard(
-                        title: 'Pending',
-                        value: '4',
-                        icon: Icons.pending_actions,
-                        color: Colors.orangeAccent,
-                      ),
-                      _buildStatCard(
                         title: 'Completed',
-                        value: '11',
+                        value: '5',
                         icon: Icons.check_circle_outline,
                         color: Colors.greenAccent.shade700,
                       ),
                       _buildStatCard(
-                        title: 'Revenue',
-                        value: '₹8,250',
+                        title: 'Pending',
+                        value: '3',
+                        icon: Icons.pending_actions,
+                        color: Colors.orangeAccent,
+                      ),
+                      _buildStatCard(
+                        title: "Today's Earnings",
+                        value: '₹850',
                         icon: Icons.account_balance_wallet_outlined,
                         color: navyBlue,
                       ),
@@ -142,31 +149,18 @@ class DashboardScreen extends StatelessWidget {
                   const SizedBox(height: 16),
 
                   _buildQuickActionButton(
-                    icon: Icons.add_circle_outline,
-                    title: 'Add Fish',
-                    subtitle: 'Add new items to your catalog',
-                    color: lightBlue,
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const AddProductScreen()),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  _buildQuickActionButton(
                     icon: Icons.receipt_long,
                     title: 'View Orders',
-                    subtitle: 'Manage and process customer orders',
+                    subtitle: 'Check pending and past deliveries',
                     color: navyBlue,
                     onTap: () {},
                   ),
                   const SizedBox(height: 12),
                   _buildQuickActionButton(
-                    icon: Icons.inventory_2_outlined,
-                    title: 'Inventory',
-                    subtitle: 'Update stock and prices',
-                    color: Colors.blueGrey,
+                    icon: Icons.power_settings_new,
+                    title: 'Go Online',
+                    subtitle: 'Start accepting new delivery requests',
+                    color: Colors.greenAccent.shade700,
                     onTap: () {},
                   ),
                   
@@ -225,7 +219,7 @@ class DashboardScreen extends StatelessWidget {
                 style: const TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFF0A1628), // Navy blue
+                  color: Color(0xFF0A1628),
                 ),
               ),
               Text(

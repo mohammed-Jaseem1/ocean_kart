@@ -1,36 +1,57 @@
 import React, { useState } from 'react';
+import UserApprovals from './UserApprovals';
 import './Homepage.css';
 
 const Homepage = ({ user, onSignOut }) => {
   const [activeMenu, setActiveMenu] = useState('Overview');
+  const [isAddUsersOpen, setIsAddUsersOpen] = useState(false);
+
+  const isApprovalsView = activeMenu === 'Approvals';
 
   const menuItems = [
-    { name: 'Overview', icon: (
-      <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-        <path d="M4 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2v-4zM14 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2v-4z"/>
-      </svg>
-    )},
-    { name: 'Orders', icon: (
-      <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-        <path d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/>
-      </svg>
-    )},
-    { name: 'Inventory', icon: (
-      <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-        <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
-      </svg>
-    )},
-    { name: 'Customers', icon: (
-      <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-        <path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
-      </svg>
-    )},
-    { name: 'Settings', icon: (
-      <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-        <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
-        <circle cx="12" cy="12" r="3"/>
-      </svg>
-    )},
+    {
+      name: 'Overview', icon: (
+        <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+          <path d="M4 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2v-4zM14 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2v-4z" />
+        </svg>
+      )
+    },
+    {
+      name: 'Orders', icon: (
+        <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+          <path d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+        </svg>
+      )
+    },
+    {
+      name: 'Inventory', icon: (
+        <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+          <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+        </svg>
+      )
+    },
+    {
+      name: 'Customers', icon: (
+        <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+          <path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+        </svg>
+      )
+    },
+    {
+      name: 'Settings', icon: (
+        <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+          <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+          <circle cx="12" cy="12" r="3" />
+        </svg>
+      )
+    },
+    {
+      name: 'Approvals', icon: (
+        <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      )
+    },
   ];
 
   const recentOrders = [
@@ -51,7 +72,7 @@ const Homepage = ({ user, onSignOut }) => {
         <div>
           <div className="sidebar-logo">
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
             </svg>
             <span>OceanKart</span>
           </div>
@@ -113,40 +134,44 @@ const Homepage = ({ user, onSignOut }) => {
       <main className="main-content">
         <header className="dashboard-header">
           <div className="header-title">
-            <h1>Dashboard Overview</h1>
-            <p>Welcome back, here is what is happening with OceanKart today.</p>
+            <h1>{isApprovalsView ? 'Pending Approvals' : 'Dashboard Overview'}</h1>
+            <p>{isApprovalsView ? 'Manage pending registration requests across all roles.' : 'Welcome back, here is what is happening with OceanKart today.'}</p>
           </div>
 
           <div className="header-actions">
             <div className="search-bar">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
               </svg>
               <input type="text" placeholder="Search transactions, products..." />
             </div>
 
             <button className="icon-btn" aria-label="Notifications">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/>
+                <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0" />
               </svg>
               <span className="badge-dot"></span>
             </button>
           </div>
         </header>
 
-        {/* KPI Metrics Widgets */}
-        <section className="kpi-grid">
-          <div className="kpi-card">
+        {isApprovalsView ? (
+          <UserApprovals />
+        ) : (
+          <>
+            {/* KPI Metrics Widgets */}
+            <section className="kpi-grid">
+              <div className="kpi-card">
             <div className="kpi-icon-wrapper">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
+                <line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
               </svg>
             </div>
             <span className="kpi-title">Total Revenue</span>
             <span className="kpi-value">$48,254.00</span>
             <div className="kpi-trend trend-up">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>
+                <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" /><polyline points="17 6 23 6 23 12" />
               </svg>
               <span>+12.5% this week</span>
             </div>
@@ -155,14 +180,14 @@ const Homepage = ({ user, onSignOut }) => {
           <div className="kpi-card">
             <div className="kpi-icon-wrapper">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/>
+                <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z" /><line x1="3" y1="6" x2="21" y2="6" /><path d="M16 10a4 4 0 01-8 0" />
               </svg>
             </div>
             <span className="kpi-title">Total Orders</span>
             <span className="kpi-value">1,842</span>
             <div className="kpi-trend trend-up">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>
+                <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" /><polyline points="17 6 23 6 23 12" />
               </svg>
               <span>+8.2% this week</span>
             </div>
@@ -171,14 +196,14 @@ const Homepage = ({ user, onSignOut }) => {
           <div className="kpi-card">
             <div className="kpi-icon-wrapper">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
+                <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
               </svg>
             </div>
             <span className="kpi-title">Active Users</span>
             <span className="kpi-value">12,482</span>
             <div className="kpi-trend trend-up">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>
+                <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" /><polyline points="17 6 23 6 23 12" />
               </svg>
               <span>+22.0% this week</span>
             </div>
@@ -187,14 +212,14 @@ const Homepage = ({ user, onSignOut }) => {
           <div className="kpi-card">
             <div className="kpi-icon-wrapper">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
               </svg>
             </div>
             <span className="kpi-title">Conversion Rate</span>
             <span className="kpi-value">3.42%</span>
             <div className="kpi-trend trend-down">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                <polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/>
+                <polyline points="23 18 13.5 8.5 8.5 13.5 1 6" /><polyline points="17 18 23 18 23 12" />
               </svg>
               <span>-1.2% this week</span>
             </div>
@@ -339,6 +364,8 @@ const Homepage = ({ user, onSignOut }) => {
             </table>
           </div>
         </section>
+          </>
+        )}
       </main>
     </div>
   );

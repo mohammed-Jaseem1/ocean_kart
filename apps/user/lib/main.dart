@@ -6,7 +6,7 @@ import 'screens/dashboard_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   // Initialize Firebase using the provided web configuration
   await Firebase.initializeApp(
     options: const FirebaseOptions(
