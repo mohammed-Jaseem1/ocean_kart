@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'registration_page.dart';
@@ -38,31 +39,46 @@ class _LoginScreenState extends State<LoginScreen> {
     final password = _passwordController.text.trim();
 
     try {
+      // Find user status by email
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .where('email', isEqualTo: email)
+          .limit(1)
+          .get();
+
+      if (!mounted) return;
+
+      if (querySnapshot.docs.isEmpty) {
+        setState(() {
+          _errorMessage = 'No user found for this email address.';
+          _isLoading = false;
+        });
+        return;
+      }
+
+      final userData = querySnapshot.docs.first.data();
+
+      // Check status before logging in to avoid AuthGate stream updates
+      if (userData['status'] == 'pending') {
+        setState(() {
+          _errorMessage = 'Your account is pending admin approval.';
+          _isLoading = false;
+        });
+        return;
+      }
+
       // Sign in existing user
-      final UserCredential userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+      await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
 
-      // Fetch user profile to check status
-      if (userCredential.user != null) {
-        final doc = await FirebaseFirestore.instance.collection('users').doc(userCredential.user!.uid).get();
-        if (doc.exists) {
-          final data = doc.data() as Map<String, dynamic>;
-          if (data['status'] == 'pending') {
-            await FirebaseAuth.instance.signOut();
-            setState(() {
-              _errorMessage = 'Your account is pending admin approval.';
-              _isLoading = false;
-            });
-            return;
-          }
-        }
-      }
+      // AuthGate will automatically navigate to Dashboard based on authStateChanges.
     } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
       setState(() {
         if (e.code == 'user-not-found') {
-          _errorMessage = 'No user found for this email.';
+          _errorMessage = 'No user found for this email address.';
         } else if (e.code == 'wrong-password') {
           _errorMessage = 'Wrong password provided.';
         } else if (e.code == 'invalid-credential') {
@@ -76,6 +92,7 @@ class _LoginScreenState extends State<LoginScreen> {
         }
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _errorMessage = 'An error occurred. Please try again later.';
       });

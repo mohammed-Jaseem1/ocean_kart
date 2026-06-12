@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'profile_dialog.dart';
+import 'profile_screen.dart';
 
-class DeliveryBoyDashboard extends StatelessWidget {
-  const DeliveryBoyDashboard({super.key});
+class DeliveryPartnerDashboard extends StatelessWidget {
+  const DeliveryPartnerDashboard({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -23,7 +23,12 @@ class DeliveryBoyDashboard extends StatelessWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.person, color: Colors.white),
-            onPressed: () => _showProfileDialog(context),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const ProfileScreen()),
+              );
+            },
             tooltip: 'Profile',
           ),
           IconButton(
@@ -106,7 +111,7 @@ class DeliveryBoyDashboard extends StatelessWidget {
                     mainAxisSpacing: 16,
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
-                    childAspectRatio: 1.4,
+                    childAspectRatio: 1.15,
                     children: [
                       _buildStatCard(
                         title: "Today's Deliveries",
@@ -302,10 +307,4 @@ class DeliveryBoyDashboard extends StatelessWidget {
     );
   }
 
-  void _showProfileDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => const ProfileDialog(),
-    );
-  }
 }

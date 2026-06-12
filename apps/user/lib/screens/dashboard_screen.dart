@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:convert';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -23,39 +25,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     {'name': 'Meat', 'icon': Icons.kebab_dining},
     {'name': 'Offers', 'icon': Icons.local_offer},
     {'name': 'Healthy', 'icon': Icons.favorite},
-  ];
-
-  final List<Map<String, dynamic>> _shops = [
-    {
-      'name': 'Ocean Catch Seafoods',
-      'rating': '4.5',
-      'tags': 'Fresh Water, Seafood',
-      'price': '\$20 for two',
-      'time': '30 mins',
-      'distance': '2.5 km',
-      'offer': '50% OFF up to \$5',
-      'image': 'https://images.unsplash.com/photo-1615141982883-c7ad0e69fd62?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80',
-    },
-    {
-      'name': 'Marina Fresh Meats',
-      'rating': '4.2',
-      'tags': 'Chicken, Mutton, Fresh',
-      'price': '\$15 for two',
-      'time': '40 mins',
-      'distance': '4.0 km',
-      'offer': 'FREE DELIVERY',
-      'image': 'https://images.unsplash.com/photo-1603048297172-c92544798d5e?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80',
-    },
-    {
-      'name': 'Deep Sea Delights',
-      'rating': '4.8',
-      'tags': 'Premium Seafood, Sushi',
-      'price': '\$40 for two',
-      'time': '45 mins',
-      'distance': '5.2 km',
-      'offer': '20% OFF',
-      'image': 'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80',
-    },
   ];
 
   Future<void> _handleLogout() async {
@@ -101,7 +70,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
                 child: Text(
-                  '14 Shops around you',
+                  'Fresh Stock Available',
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.9),
                     fontSize: 20,
@@ -112,14 +81,57 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ),
 
-            // Shops List
-            SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  return _buildShopCard(_shops[index]);
-                },
-                childCount: _shops.length,
-              ),
+            // Products List
+            StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance.collectionGroup('products').snapshots(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.all(32.0),
+                      child: Center(child: CircularProgressIndicator()),
+                    ),
+                  );
+                }
+
+                final docs = snapshot.data!.docs.where((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final stock = (data['stockQuantity'] as num?)?.toDouble() ?? 0;
+                  return stock > 0;
+                }).toList();
+
+                if (docs.isEmpty) {
+                  return SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32.0),
+                      child: Center(
+                        child: Text(
+                          'No stock available right now.',
+                          style: TextStyle(color: Colors.white.withOpacity(0.6)),
+                        ),
+                      ),
+                    ),
+                  );
+                }
+
+                return SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  sliver: SliverGrid(
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      mainAxisSpacing: 16.0,
+                      crossAxisSpacing: 16.0,
+                      childAspectRatio: 0.75,
+                    ),
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        return _buildProductCard(docs[index]);
+                      },
+                      childCount: docs.length,
+                    ),
+                  ),
+                );
+              },
             ),
             
             const SliverToBoxAdapter(child: SizedBox(height: 80)), // Padding for bottom nav
@@ -382,16 +394,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildShopCard(Map<String, dynamic> shop) {
+  Widget _buildProductCard(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    final String name = data['name'] ?? 'Unknown Product';
+    final String? malayalamName = data['malayalamName'];
+    final String displayName = malayalamName != null && malayalamName.trim().isNotEmpty ? '$name / $malayalamName' : name;
+    final String? imageUrl = data['imageUrl'];
+    final double price = (data['pricePerKg'] as num?)?.toDouble() ?? 0.0;
+    final double stock = (data['stockQuantity'] as num?)?.toDouble() ?? 0.0;
+
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
       decoration: BoxDecoration(
         color: _cardColor,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.2),
-            blurRadius: 15,
+            blurRadius: 10,
             offset: const Offset(0, 5),
           ),
         ],
@@ -401,159 +420,140 @@ class _DashboardScreenState extends State<DashboardScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Image and Promo Overlay
-          Stack(
-            children: [
-              Container(
-                height: 200,
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  color: _navyBlue,
-                  image: DecorationImage(
-                    image: NetworkImage(shop['image']),
-                    fit: BoxFit.cover,
+          Expanded(
+            child: Stack(
+              children: [
+                Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: _navyBlue,
+                  ),
+                  child: imageUrl != null && imageUrl.isNotEmpty
+                      ? (imageUrl.startsWith('http')
+                          ? Image.network(
+                              imageUrl,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) {
+                                return const Center(child: Icon(Icons.broken_image, color: Colors.white54, size: 32));
+                              },
+                            )
+                          : Image.memory(
+                              const Base64Decoder().convert(imageUrl),
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) {
+                                return const Center(child: Icon(Icons.broken_image, color: Colors.white54, size: 32));
+                              },
+                            ))
+                      : const Center(child: Icon(Icons.image, color: Colors.white54, size: 32)),
+                ),
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          _cardColor.withOpacity(0.9),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
-              ),
-              Positioned.fill(
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.transparent,
-                        _cardColor.withOpacity(0.9),
+                // Offers Badge (Top Left)
+                Positioned(
+                  top: 12,
+                  left: 0,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _lightBlue,
+                      borderRadius: const BorderRadius.only(
+                        topRight: Radius.circular(8),
+                        bottomRight: Radius.circular(8),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: _lightBlue.withOpacity(0.4),
+                          blurRadius: 8,
+                          offset: const Offset(2, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.inventory, color: Colors.white, size: 12),
+                        const SizedBox(width: 4),
+                        Text(
+                          '$stock kg',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 10,
+                          ),
+                        ),
                       ],
                     ),
                   ),
                 ),
-              ),
-              // Offers Badge
-              Positioned(
-                bottom: 12,
-                left: 0,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: _lightBlue,
-                    borderRadius: const BorderRadius.only(
-                      topRight: Radius.circular(8),
-                      bottomRight: Radius.circular(8),
+                // Price Badge (Bottom Right)
+                Positioned(
+                  bottom: 8,
+                  right: 8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.9),
+                      borderRadius: BorderRadius.circular(6),
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: _lightBlue.withOpacity(0.4),
-                        blurRadius: 8,
-                        offset: const Offset(2, 2),
+                    child: Text(
+                      '₹$price / kg',
+                      style: TextStyle(
+                        color: _navyBlue,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 11,
                       ),
-                    ],
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.local_offer, color: Colors.white, size: 14),
-                      const SizedBox(width: 6),
-                      Text(
-                        shop['offer'],
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              // Time and Distance Badge
-              Positioned(
-                bottom: 12,
-                right: 12,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.9),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    '${shop['time']} • ${shop['distance']}',
-                    style: TextStyle(
-                      color: _navyBlue,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 11,
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           
-          // Shop Info
+          // Product Info
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        shop['name'],
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.green.shade700,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Row(
-                        children: [
-                          Text(
-                            shop['rating'],
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                            ),
-                          ),
-                          const SizedBox(width: 2),
-                          const Icon(Icons.star, color: Colors.white, size: 12),
-                        ],
-                      ),
-                    ),
-                  ],
+                Text(
+                  displayName,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 6),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        shop['tags'],
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.6),
-                          fontSize: 14,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade700,
+                      borderRadius: BorderRadius.circular(6),
                     ),
-                    Text(
-                      shop['price'],
+                    child: const Text(
+                      'ADD',
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.6),
-                        fontSize: 13,
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
                       ),
                     ),
-                  ],
+                  ),
                 ),
               ],
             ),

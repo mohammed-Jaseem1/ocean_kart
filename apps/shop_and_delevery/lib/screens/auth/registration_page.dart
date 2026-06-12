@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -223,6 +224,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
     bool isRequired = false,
     bool isEmail = false,
     bool isPhone = false,
+    bool isMobileNumber = false,
     bool isPassword = false,
     bool obscureText = false,
     VoidCallback? onToggleObscure,
@@ -242,9 +244,15 @@ class _RegistrationPageState extends State<RegistrationPage> {
             : isPhone
                 ? TextInputType.phone
                 : TextInputType.text,
+        inputFormatters: isMobileNumber ? [
+          FilteringTextInputFormatter.digitsOnly,
+          LengthLimitingTextInputFormatter(10),
+        ] : (isPhone ? [FilteringTextInputFormatter.digitsOnly] : null),
         decoration: InputDecoration(
           labelText: label + (isRequired ? ' *' : ''),
           labelStyle: TextStyle(color: Colors.white.withOpacity(0.6)),
+          prefixText: isMobileNumber ? '+91 ' : null,
+          prefixStyle: isMobileNumber ? const TextStyle(color: Colors.white, fontSize: 16) : null,
           prefixIcon: Icon(icon, color: primaryBlue),
           suffixIcon: isPassword
               ? IconButton(
@@ -285,6 +293,11 @@ class _RegistrationPageState extends State<RegistrationPage> {
                 if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')
                     .hasMatch(value.trim())) {
                   return 'Please enter a valid email address';
+                }
+              }
+              if (isMobileNumber && value != null && value.isNotEmpty) {
+                if (!RegExp(r'^[6-9]\d{9}$').hasMatch(value.trim())) {
+                  return 'Please enter a valid 10-digit number';
                 }
               }
               return null;
@@ -517,6 +530,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
                         icon: Icons.phone,
                         isRequired: true,
                         isPhone: true,
+                        isMobileNumber: true,
                       ),
                       _buildTextField(
                         controller: _emailController,

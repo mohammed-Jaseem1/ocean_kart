@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'screens/login_screen.dart';
-import 'screens/dashboard_screen.dart';
-import 'screens/delivery_boy.dart';
+import 'screens/auth/login_screen.dart';
+import 'screens/shop_keeper/dashboard_screen.dart';
+import 'screens/delevery_partner/delivery_partner_dashboard.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -90,7 +90,7 @@ class AuthGate extends StatelessWidget {
                 final role = userData?['role'];
                 
                 if (role == 'Delivery Boy') {
-                  return const DeliveryBoyDashboard();
+                  return const DeliveryPartnerDashboard();
                 } else {
                   return const DashboardScreen();
                 }

@@ -1,16 +1,35 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'profile_dialog.dart';
-import 'add_product_screen.dart';
+import 'inventory/add_product_screen.dart';
+import 'inventory/inventory_home_screen.dart';
+import 'profile_screen.dart';
 
-class DashboardScreen extends StatelessWidget {
+class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
+
+  @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  int _selectedIndex = 0;
 
   @override
   Widget build(BuildContext context) {
     const navyBlue = Color(0xFF0A1628);
     const lightBlue = Color(0xFF00B4D8);
     const backgroundWhite = Color(0xFFF5F7FA); // A light greyish white for modern contrast
+
+    final List<Widget> _pages = [
+      _buildDashboardContent(context, navyBlue, lightBlue),
+      const InventoryHomeScreen(),
+      const Center(
+        child: Text(
+          'Orders Screen',
+          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: navyBlue),
+        ),
+      ),
+    ];
 
     return Scaffold(
       backgroundColor: backgroundWhite,
@@ -24,7 +43,12 @@ class DashboardScreen extends StatelessWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.person, color: Colors.white),
-            onPressed: () => _showProfileDialog(context),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const ProfileScreen()),
+              );
+            },
             tooltip: 'Profile',
           ),
           IconButton(
@@ -36,16 +60,51 @@ class DashboardScreen extends StatelessWidget {
           )
         ],
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
+      body: _pages[_selectedIndex],
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _selectedIndex,
+        onTap: (index) {
+          setState(() {
+            _selectedIndex = index;
+          });
+        },
+        selectedItemColor: lightBlue,
+        unselectedItemColor: Colors.grey.shade600,
+        backgroundColor: Colors.white,
+        elevation: 10,
+        type: BottomNavigationBarType.fixed,
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.dashboard_outlined),
+            activeIcon: Icon(Icons.dashboard),
+            label: 'Dashboard',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.inventory_2_outlined),
+            activeIcon: Icon(Icons.inventory_2),
+            label: 'Inventory',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.receipt_long_outlined),
+            activeIcon: Icon(Icons.receipt_long),
+            label: 'Orders',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDashboardContent(BuildContext context, Color navyBlue, Color lightBlue) {
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
             // Welcome Header
             Container(
               padding: const EdgeInsets.all(24.0),
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 color: navyBlue,
-                borderRadius: BorderRadius.only(
+                borderRadius: const BorderRadius.only(
                   bottomLeft: Radius.circular(30),
                   bottomRight: Radius.circular(30),
                 ),
@@ -82,7 +141,7 @@ class DashboardScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Overview',
                     style: TextStyle(
                       fontSize: 20,
@@ -99,7 +158,7 @@ class DashboardScreen extends StatelessWidget {
                     mainAxisSpacing: 16,
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
-                    childAspectRatio: 1.4,
+                    childAspectRatio: 1.15,
                     children: [
                       _buildStatCard(
                         title: 'Orders Today',
@@ -131,7 +190,7 @@ class DashboardScreen extends StatelessWidget {
                   const SizedBox(height: 32),
 
                   // Quick Actions Section
-                  const Text(
+                  Text(
                     'Quick Actions',
                     style: TextStyle(
                       fontSize: 20,
@@ -176,8 +235,7 @@ class DashboardScreen extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
+      );
   }
 
   Widget _buildStatCard({
@@ -308,10 +366,4 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  void _showProfileDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => const ProfileDialog(),
-    );
-  }
 }

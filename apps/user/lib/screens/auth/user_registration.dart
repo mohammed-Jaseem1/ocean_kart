@@ -17,24 +17,9 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
   final _mobileController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _confirmPasswordController = TextEditingController();
-
-  // Address Details
-  final _houseController = TextEditingController();
-  final _streetController = TextEditingController();
-  final _cityController = TextEditingController();
-  final _districtController = TextEditingController();
-  final _pincodeController = TextEditingController();
-  final _landmarkController = TextEditingController();
 
   bool _obscurePassword = true;
-  bool _obscureConfirmPassword = true;
   bool _isLoading = false;
-  bool _isGettingLocation = false;
-
-  // Mock GPS Location
-  double? _latitude;
-  double? _longitude;
 
   @override
   void dispose() {
@@ -42,38 +27,7 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
     _mobileController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
-    _confirmPasswordController.dispose();
-    _houseController.dispose();
-    _streetController.dispose();
-    _cityController.dispose();
-    _districtController.dispose();
-    _pincodeController.dispose();
-    _landmarkController.dispose();
     super.dispose();
-  }
-
-  void _getCurrentLocation() async {
-    setState(() {
-      _isGettingLocation = true;
-    });
-
-    // Simulate a network/GPS delay
-    await Future.delayed(const Duration(seconds: 2));
-
-    if (mounted) {
-      setState(() {
-        _latitude = 12.9716; // Example coordinate
-        _longitude = 77.5946;
-        _isGettingLocation = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('GPS Location fetched successfully!'),
-          backgroundColor: Colors.greenAccent,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
   }
 
   Future<void> _submit() async {
@@ -109,20 +63,6 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
         'email': _emailController.text.trim(), // The actual provided email (or empty)
         'createdAt': FieldValue.serverTimestamp(),
         'status': 'active', // Customers are active immediately
-        'addresses': [
-          {
-            'id': DateTime.now().millisecondsSinceEpoch.toString(),
-            'isDefault': true,
-            'houseNumber': _houseController.text.trim(),
-            'street': _streetController.text.trim(),
-            'city': _cityController.text.trim(),
-            'district': _districtController.text.trim(),
-            'pincode': _pincodeController.text.trim(),
-            'landmark': _landmarkController.text.trim(),
-            'latitude': _latitude,
-            'longitude': _longitude,
-          }
-        ]
       };
 
       // Save to Firestore
@@ -420,155 +360,7 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
                           return null;
                         },
                       ),
-                      _buildTextField(
-                        controller: _confirmPasswordController,
-                        label: 'Confirm Password',
-                        icon: Icons.lock_outline,
-                        isRequired: true,
-                        isPassword: true,
-                        obscureText: _obscureConfirmPassword,
-                        onToggleObscure: () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
-                        customValidator: (value) {
-                          if (value == null || value.isEmpty) return 'Please confirm your password';
-                          if (value != _passwordController.text) return 'Passwords do not match';
-                          return null;
-                        },
-                      ),
 
-                      // Address Details Section
-                      _buildSectionHeader('Address Details', icon: Icons.home_outlined),
-                      _buildTextField(
-                        controller: _houseController,
-                        label: 'House/Flat Number',
-                        icon: Icons.door_front_door_outlined,
-                        isRequired: true,
-                      ),
-                      _buildTextField(
-                        controller: _streetController,
-                        label: 'Street/Area',
-                        icon: Icons.signpost_outlined,
-                        isRequired: true,
-                      ),
-                      
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildTextField(
-                              controller: _cityController,
-                              label: 'City',
-                              icon: Icons.location_city_outlined,
-                              isRequired: true,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: _buildTextField(
-                              controller: _districtController,
-                              label: 'District',
-                              icon: Icons.map_outlined,
-                              isRequired: true,
-                            ),
-                          ),
-                        ],
-                      ),
-                      
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildTextField(
-                              controller: _pincodeController,
-                              label: 'Pincode',
-                              icon: Icons.pin_drop_outlined,
-                              isRequired: true,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: _buildTextField(
-                              controller: _landmarkController,
-                              label: 'Landmark (Optional)',
-                              icon: Icons.landscape_outlined,
-                              isRequired: false,
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      // Location & GPS Section
-                      _buildSectionHeader('Location', icon: Icons.gps_fixed),
-                      
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: darkBackground.withOpacity(0.5),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.white.withOpacity(0.1)),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      const Text(
-                                        'Current Location (GPS)',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 15,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        _latitude != null 
-                                          ? 'Location captured successfully' 
-                                          : 'Pinpoint your exact location for accurate delivery.',
-                                        style: TextStyle(
-                                          color: _latitude != null ? Colors.greenAccent : Colors.white.withOpacity(0.6),
-                                          fontSize: 13,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                ElevatedButton.icon(
-                                  onPressed: _isGettingLocation ? null : _getCurrentLocation,
-                                  icon: _isGettingLocation 
-                                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                                    : Icon(_latitude != null ? Icons.check : Icons.my_location, size: 18),
-                                  label: Text(_latitude != null ? 'Fetched' : 'Fetch GPS'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: _latitude != null ? Colors.green.withOpacity(0.2) : primaryBlue.withOpacity(0.2),
-                                    foregroundColor: _latitude != null ? Colors.greenAccent : primaryBlue,
-                                    elevation: 0,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                  ),
-                                )
-                              ],
-                            ),
-                            const Divider(height: 24, color: Colors.white10),
-                            Row(
-                              children: [
-                                const Icon(Icons.library_add_check_outlined, color: Colors.white70, size: 20),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Text(
-                                    'Save Multiple Addresses (You can add more addresses later from your Profile menu)',
-                                    style: TextStyle(
-                                      color: Colors.white.withOpacity(0.7),
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            )
-                          ],
-                        ),
-                      ),
-                      
                       const SizedBox(height: 32),
 
                       // Submit Button
