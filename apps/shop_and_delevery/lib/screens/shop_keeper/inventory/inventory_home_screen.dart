@@ -121,15 +121,15 @@ class _InventoryHomeScreenState extends State<InventoryHomeScreen> {
                     return Card(
                       color: Colors.white,
                       elevation: 2,
-                      margin: const EdgeInsets.only(bottom: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      margin: const EdgeInsets.only(bottom: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       child: ListTile(
-                        contentPadding: const EdgeInsets.all(16),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                         leading: Container(
-                          width: 60,
-                          height: 60,
+                          width: 50,
+                          height: 50,
                           decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(10),
                             image: data['imageUrl'] != null
                                 ? DecorationImage(
                                     image: data['imageUrl'].startsWith('http')
@@ -142,22 +142,27 @@ class _InventoryHomeScreenState extends State<InventoryHomeScreen> {
                           ),
                           child: data['imageUrl'] == null ? const Icon(Icons.image, color: Colors.grey) : null,
                         ),
-                        title: Text(data['name'] ?? 'Unknown', style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 18)),
+                        title: Text(
+                          data['malayalamName'] != null && data['malayalamName'].toString().isNotEmpty
+                              ? '${data['name'] ?? 'Unknown'} (${data['malayalamName']})'
+                              : data['name'] ?? 'Unknown',
+                          style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
                         subtitle: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const SizedBox(height: 4),
-                            Text('${data['category'] ?? ''}', style: TextStyle(color: Colors.grey.shade600)),
-                            const SizedBox(height: 4),
+                            const SizedBox(height: 2),
+                            Text('${data['category'] ?? ''}', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                            const SizedBox(height: 2),
                             Row(
                               children: [
-                                Text('Inward: ₹${data['inwardPrice'] ?? 0}', style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.w600)),
-                                const SizedBox(width: 16),
-                                Text('Sale: ₹${data['pricePerKg'] ?? 0}', style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold)),
+                                Text('Inward: ₹${data['inwardPrice'] ?? 0}', style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.w600, fontSize: 13)),
+                                const SizedBox(width: 12),
+                                Text('Sale: ₹${data['pricePerKg'] ?? 0}', style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 13)),
                               ],
                             ),
-                            const SizedBox(height: 4),
-                            Text('Stock: ${data['stockQuantity'] ?? 0} Kg', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 2),
+                            Text('Stock: ${data['stockQuantity'] ?? 0} Kg', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13)),
                           ],
                         ),
                         onTap: () {

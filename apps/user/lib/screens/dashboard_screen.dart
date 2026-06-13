@@ -13,9 +13,10 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   int _selectedIndex = 0;
 
-  final Color _navyBlue = const Color(0xFF0A1628);
-  final Color _cardColor = const Color(0xFF132238);
+  final Color _navyBlue = const Color(0xFFF5F7FA);
+  final Color _cardColor = Colors.white;
   final Color _lightBlue = const Color(0xFF00B4D8);
+  final Color _textColor = const Color(0xFF0A1628);
 
   // Mock Data
   final List<Map<String, dynamic>> _categories = [
@@ -72,7 +73,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 child: Text(
                   'Fresh Stock Available',
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.9),
+                    color: _textColor.withOpacity(0.9),
                     fontSize: 20,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 0.5,
@@ -107,7 +108,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       child: Center(
                         child: Text(
                           'No stock available right now.',
-                          style: TextStyle(color: Colors.white.withOpacity(0.6)),
+                          style: TextStyle(color: _textColor.withOpacity(0.6)),
                         ),
                       ),
                     ),
@@ -153,22 +154,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
             children: [
               Row(
                 children: [
-                  const Text(
+                  Text(
                     'Home',
                     style: TextStyle(
-                      color: Colors.white,
+                      color: _textColor,
                       fontWeight: FontWeight.bold,
                       fontSize: 18,
                     ),
                   ),
                   const SizedBox(width: 4),
-                  Icon(Icons.keyboard_arrow_down, color: Colors.white.withOpacity(0.7), size: 20),
+                  Icon(Icons.keyboard_arrow_down, color: _textColor.withOpacity(0.7), size: 20),
                 ],
               ),
               Text(
                 '123, Ocean Drive, Marina Layout...',
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.6),
+                  color: _textColor.withOpacity(0.6),
                   fontSize: 13,
                 ),
                 maxLines: 1,
@@ -191,7 +192,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   children: [
                     ListTile(
                       leading: Icon(Icons.person, color: _lightBlue),
-                      title: const Text('My Profile', style: TextStyle(color: Colors.white)),
+                      title: Text('My Profile', style: TextStyle(color: _textColor)),
                       onTap: () => Navigator.pop(context),
                     ),
                     ListTile(
@@ -227,7 +228,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.2),
+              color: Colors.black.withOpacity(0.05),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -242,7 +243,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               child: Text(
                 'Search for "Fresh Prawns"',
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.4),
+                  color: _textColor.withOpacity(0.4),
                   fontSize: 15,
                 ),
               ),
@@ -250,7 +251,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             Container(
               width: 1,
               height: 24,
-              color: Colors.white.withOpacity(0.1),
+              color: _textColor.withOpacity(0.1),
             ),
             const SizedBox(width: 12),
             Icon(Icons.mic_none, color: _lightBlue),
@@ -288,8 +289,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 const SizedBox(height: 8),
                 Text(
                   cat['name'],
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: _textColor,
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                   ),
@@ -409,7 +410,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.2),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 10,
             offset: const Offset(0, 5),
           ),
@@ -460,42 +461,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   ),
                 ),
-                // Offers Badge (Top Left)
-                Positioned(
-                  top: 12,
-                  left: 0,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: _lightBlue,
-                      borderRadius: const BorderRadius.only(
-                        topRight: Radius.circular(8),
-                        bottomRight: Radius.circular(8),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: _lightBlue.withOpacity(0.4),
-                          blurRadius: 8,
-                          offset: const Offset(2, 2),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.inventory, color: Colors.white, size: 12),
-                        const SizedBox(width: 4),
-                        Text(
-                          '$stock kg',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 10,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+
                 // Price Badge (Bottom Right)
                 Positioned(
                   bottom: 8,
@@ -503,13 +469,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.9),
+                      color: _textColor,
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
                       '₹$price / kg',
                       style: TextStyle(
-                        color: _navyBlue,
+                        color: _cardColor,
                         fontWeight: FontWeight.w900,
                         fontSize: 11,
                       ),
@@ -528,8 +494,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               children: [
                 Text(
                   displayName,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: _textColor,
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
                   ),
@@ -569,7 +535,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         color: _cardColor,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.3),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 10,
             offset: const Offset(0, -5),
           ),
@@ -581,7 +547,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         type: BottomNavigationBarType.fixed,
         currentIndex: _selectedIndex,
         selectedItemColor: _lightBlue,
-        unselectedItemColor: Colors.white.withOpacity(0.4),
+        unselectedItemColor: _textColor.withOpacity(0.4),
         selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
         unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal, fontSize: 12),
         onTap: (index) {

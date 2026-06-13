@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:image_cropper/image_cropper.dart';
 import 'dart:typed_data';
 import 'dart:convert';
 import 'product_management_screen.dart';
@@ -64,6 +65,31 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
     if (pickedFile == null) return;
 
+    final croppedFile = await ImageCropper().cropImage(
+      sourcePath: pickedFile.path,
+      aspectRatio: const CropAspectRatio(ratioX: 3, ratioY: 2),
+      uiSettings: [
+        AndroidUiSettings(
+            toolbarTitle: 'Crop Image',
+            toolbarColor: Colors.black,
+            toolbarWidgetColor: Colors.white,
+            initAspectRatio: CropAspectRatioPreset.ratio3x2,
+            lockAspectRatio: true),
+        IOSUiSettings(
+          title: 'Crop Image',
+          aspectRatioLockEnabled: true,
+          resetAspectRatioEnabled: false,
+          aspectRatioPickerButtonHidden: true,
+        ),
+        WebUiSettings(
+          context: context,
+          presentStyle: WebPresentStyle.dialog,
+        ),
+      ],
+    );
+
+    if (croppedFile == null) return;
+
     setState(() {
       _isLoading = true;
     });
@@ -73,7 +99,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
       if (user == null) throw Exception('No user logged in');
 
       // Convert to Base64 to store directly in Firestore
-      final bytes = await pickedFile.readAsBytes();
+      final bytes = await croppedFile.readAsBytes();
       final base64String = base64Encode(bytes);
 
       if (mounted) {
