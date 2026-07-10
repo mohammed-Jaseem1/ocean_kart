@@ -1,310 +1,291 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'profile_screen.dart';
 
-class DeliveryPartnerDashboard extends StatelessWidget {
+class DeliveryPartnerDashboard extends StatefulWidget {
   const DeliveryPartnerDashboard({super.key});
 
   @override
+  State<DeliveryPartnerDashboard> createState() => _DeliveryPartnerDashboardState();
+}
+
+class _DeliveryPartnerDashboardState extends State<DeliveryPartnerDashboard> {
+  final User? currentUser = FirebaseAuth.instance.currentUser;
+  final Color _navyBlue = const Color(0xFF0A1628);
+  final Color _lightBlue = const Color(0xFF00B4D8);
+  final Color _backgroundWhite = const Color(0xFFF5F7FA);
+
+  Future<void> _acceptDelivery(String orderId) async {
+    if (currentUser == null) return;
+    try {
+      await FirebaseFirestore.instance.collection('orders').doc(orderId).update({
+        'status': 'out_for_delivery',
+        'deliveryBoyId': currentUser!.uid,
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Delivery Accepted!'), backgroundColor: Colors.green),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to accept: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  Future<void> _markDelivered(String orderId) async {
+    try {
+      await FirebaseFirestore.instance.collection('orders').doc(orderId).update({
+        'status': 'completed',
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Marked as Delivered!'), backgroundColor: Colors.green),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    const navyBlue = Color(0xFF0A1628);
-    const lightBlue = Color(0xFF00B4D8);
-    const backgroundWhite = Color(0xFFF5F7FA);
+    if (currentUser == null) {
+      return const Scaffold(body: Center(child: Text("Please login")));
+    }
 
-    return Scaffold(
-      backgroundColor: backgroundWhite,
-      appBar: AppBar(
-        backgroundColor: navyBlue,
-        elevation: 0,
-        title: const Text(
-          'Delivery Dashboard',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.person, color: Colors.white),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const ProfileScreen()),
-              );
-            },
-            tooltip: 'Profile',
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        backgroundColor: _backgroundWhite,
+        appBar: AppBar(
+          backgroundColor: _navyBlue,
+          elevation: 0,
+          title: const Text(
+            'Delivery Dashboard',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
           ),
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.white),
-            onPressed: () async {
-              await FirebaseAuth.instance.signOut();
-            },
-            tooltip: 'Log Out',
-          )
-        ],
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.person, color: Colors.white),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const ProfileScreen()),
+                );
+              },
+              tooltip: 'Profile',
+            ),
+            IconButton(
+              icon: const Icon(Icons.logout, color: Colors.white),
+              onPressed: () async {
+                await FirebaseAuth.instance.signOut();
+              },
+              tooltip: 'Log Out',
+            )
+          ],
+          bottom: const TabBar(
+            indicatorColor: Color(0xFF00B4D8),
+            labelColor: Color(0xFF00B4D8),
+            unselectedLabelColor: Colors.white70,
+            tabs: [
+              Tab(text: 'Available Orders'),
+              Tab(text: 'My Deliveries'),
+            ],
+          ),
+        ),
+        body: TabBarView(
+          children: [
+            _buildAvailableOrders(),
+            _buildMyDeliveries(),
+          ],
+        ),
       ),
-      body: SingleChildScrollView(
+    );
+  }
+
+  Widget _buildAvailableOrders() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('orders')
+          .where('status', isEqualTo: 'ready_for_delivery')
+          .orderBy('createdAt', descending: true)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          // Fallback if index missing
+          return StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('orders')
+                .where('status', isEqualTo: 'ready_for_delivery')
+                .snapshots(),
+            builder: (context, fallbackSnap) {
+              if (fallbackSnap.hasError) return Center(child: Text('Error: ${fallbackSnap.error}'));
+              if (!fallbackSnap.hasData) return const Center(child: CircularProgressIndicator());
+              return _buildOrdersList(fallbackSnap.data!.docs, true);
+            },
+          );
+        }
+        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        return _buildOrdersList(snapshot.data!.docs, true);
+      },
+    );
+  }
+
+  Widget _buildMyDeliveries() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('orders')
+          .where('deliveryBoyId', isEqualTo: currentUser!.uid)
+          .where('status', isEqualTo: 'out_for_delivery')
+          .orderBy('createdAt', descending: true)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('orders')
+                .where('deliveryBoyId', isEqualTo: currentUser!.uid)
+                .where('status', isEqualTo: 'out_for_delivery')
+                .snapshots(),
+            builder: (context, fallbackSnap) {
+              if (fallbackSnap.hasError) return Center(child: Text('Error: ${fallbackSnap.error}'));
+              if (!fallbackSnap.hasData) return const Center(child: CircularProgressIndicator());
+              return _buildOrdersList(fallbackSnap.data!.docs, false);
+            },
+          );
+        }
+        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        return _buildOrdersList(snapshot.data!.docs, false);
+      },
+    );
+  }
+
+  Widget _buildOrdersList(List<DocumentSnapshot> docs, bool isAvailable) {
+    if (docs.isEmpty) {
+      return Center(
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Welcome Header
-            Container(
-              padding: const EdgeInsets.all(24.0),
-              decoration: const BoxDecoration(
-                color: navyBlue,
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(30),
-                  bottomRight: Radius.circular(30),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Welcome,',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.white.withOpacity(0.7),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  const Row(
-                    children: [
-                      Text(
-                        'Rahul ',
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                      Text(
-                        '👋',
-                        style: TextStyle(fontSize: 24),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            // Statistics Section
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Overview',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: navyBlue,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  
-                  // Stats Grid
-                  GridView.count(
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 16,
-                    mainAxisSpacing: 16,
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    childAspectRatio: 1.15,
-                    children: [
-                      _buildStatCard(
-                        title: "Today's Deliveries",
-                        value: '8',
-                        icon: Icons.local_shipping_outlined,
-                        color: lightBlue,
-                      ),
-                      _buildStatCard(
-                        title: 'Completed',
-                        value: '5',
-                        icon: Icons.check_circle_outline,
-                        color: Colors.greenAccent.shade700,
-                      ),
-                      _buildStatCard(
-                        title: 'Pending',
-                        value: '3',
-                        icon: Icons.pending_actions,
-                        color: Colors.orangeAccent,
-                      ),
-                      _buildStatCard(
-                        title: "Today's Earnings",
-                        value: '₹850',
-                        icon: Icons.account_balance_wallet_outlined,
-                        color: navyBlue,
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 32),
-
-                  // Quick Actions Section
-                  const Text(
-                    'Quick Actions',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: navyBlue,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  _buildQuickActionButton(
-                    icon: Icons.receipt_long,
-                    title: 'View Orders',
-                    subtitle: 'Check pending and past deliveries',
-                    color: navyBlue,
-                    onTap: () {},
-                  ),
-                  const SizedBox(height: 12),
-                  _buildQuickActionButton(
-                    icon: Icons.power_settings_new,
-                    title: 'Go Online',
-                    subtitle: 'Start accepting new delivery requests',
-                    color: Colors.greenAccent.shade700,
-                    onTap: () {},
-                  ),
-                  
-                  const SizedBox(height: 32),
-                ],
-              ),
+            Icon(Icons.local_shipping_outlined, size: 80, color: Colors.grey.shade400),
+            const SizedBox(height: 16),
+            Text(
+              isAvailable ? 'No available orders right now.' : 'You have no active deliveries.',
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 16),
             ),
           ],
         ),
-      ),
-    );
-  }
+      );
+    }
 
-  Widget _buildStatCard({
-    required String title,
-    required String value,
-    required IconData icon,
-    required Color color,
-  }) {
-    return Container(
+    return ListView.builder(
+      physics: const BouncingScrollPhysics(),
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: color.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Icon(icon, color: color, size: 28),
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(Icons.arrow_forward_ios, size: 12, color: color),
-              )
-            ],
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF0A1628),
-                ),
-              ),
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.grey.shade600,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+      itemCount: docs.length,
+      itemBuilder: (context, index) {
+        final data = docs[index].data() as Map<String, dynamic>;
+        final String orderId = docs[index].id;
+        final double total = (data['totalAmount'] as num?)?.toDouble() ?? 0.0;
+        final String phone = data['phone'] ?? 'N/A';
+        final String address = data['deliveryAddress'] ?? 'N/A';
+        final items = data['items'] as List<dynamic>? ?? [];
 
-  Widget _buildQuickActionButton({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.03),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-          border: Border.all(color: Colors.grey.shade100),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, color: color, size: 28),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF0A1628),
+        return Card(
+          margin: const EdgeInsets.only(bottom: 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          elevation: 2,
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Order #${orderId.substring(0, 8).toUpperCase()}',
+                      style: TextStyle(color: _navyBlue, fontWeight: FontWeight.w900, fontSize: 16),
+                    ),
+                    Text('₹$total', style: TextStyle(color: _lightBlue, fontWeight: FontWeight.bold, fontSize: 16)),
+                  ],
+                ),
+                const Divider(height: 24),
+                
+                // Customer Details
+                Row(
+                  children: [
+                    Icon(Icons.person, size: 16, color: Colors.grey.shade600),
+                    const SizedBox(width: 8),
+                    const Text('Customer', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(Icons.phone_outlined, size: 16, color: Colors.grey.shade600),
+                    const SizedBox(width: 8),
+                    Text(phone, style: TextStyle(color: Colors.grey.shade800)),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.location_on_outlined, size: 16, color: Colors.grey.shade600),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(address, style: TextStyle(color: Colors.grey.shade800, fontSize: 13)),
+                    ),
+                  ],
+                ),
+                const Divider(height: 24),
+                
+                // Items Preview
+                Text('${items.length} Items to Deliver', style: TextStyle(color: _navyBlue, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                
+                if (isAvailable) ...[
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () => _acceptDelivery(orderId),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _lightBlue,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      child: const Text('Accept Delivery', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
                     ),
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey.shade600,
+                ] else ...[
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () => _markDelivered(orderId),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      child: const Text('Mark as Delivered', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
                     ),
                   ),
                 ],
-              ),
+              ],
             ),
-            Icon(Icons.chevron_right, color: Colors.grey.shade400),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
-
 }

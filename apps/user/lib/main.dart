@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/dashboard_screen.dart';
 
@@ -67,7 +68,55 @@ class AuthGate extends StatelessWidget {
         }
 
         if (snapshot.hasData) {
-          return const DashboardScreen();
+          final user = snapshot.data!;
+          return StreamBuilder<DocumentSnapshot>(
+            stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
+            builder: (context, docSnapshot) {
+              if (docSnapshot.connectionState == ConnectionState.waiting) {
+                return const Scaffold(
+                  body: Center(
+                    child: CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00B4D8)),
+                    ),
+                  ),
+                );
+              }
+              
+              if (docSnapshot.hasData && docSnapshot.data!.exists) {
+                final data = docSnapshot.data!.data() as Map<String, dynamic>?;
+                if (data != null && data['role'] != 'customer') {
+                  // Role is not customer, sign them out immediately
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    FirebaseAuth.instance.signOut();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Access Denied. Only customers can log into this app.'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  });
+                  return const Scaffold(
+                    body: Center(
+                      child: CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00B4D8)),
+                      ),
+                    ),
+                  );
+                } else {
+                  return const DashboardScreen();
+                }
+              }
+              
+              // Waiting for login screen to create the document
+              return const Scaffold(
+                body: Center(
+                  child: CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00B4D8)),
+                  ),
+                ),
+              );
+            },
+          );
         }
 
         return const LoginScreen();

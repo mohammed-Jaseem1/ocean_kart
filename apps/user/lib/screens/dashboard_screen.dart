@@ -17,6 +17,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _selectedIndex = 0;
   String _searchQuery = '';
   String _selectedCategory = '';
+  String _selectedShopId = '';
 
   final Color _navyBlue = const Color(0xFFF5F7FA);
   final Color _cardColor = Colors.white;
@@ -165,14 +166,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
             }
 
             if (_selectedCategory.isNotEmpty) {
+              final query = _selectedCategory.toLowerCase();
+              final singularQuery = query.endsWith('s') ? query.substring(0, query.length - 1) : query;
+              
               docs = docs.where((doc) {
                 final data = doc.data() as Map<String, dynamic>;
                 final cat = (data['category'] ?? '').toString().toLowerCase();
-                if (cat.isNotEmpty) {
-                  return cat == _selectedCategory.toLowerCase();
-                }
                 final name = (data['name'] ?? '').toString().toLowerCase();
-                return name.contains(_selectedCategory.toLowerCase());
+                
+                if (cat.contains(query) || cat.contains(singularQuery)) return true;
+                if (name.contains(query) || name.contains(singularQuery)) return true;
+                
+                return false;
+              }).toList();
+            }
+
+            if (_selectedShopId.isNotEmpty) {
+              docs = docs.where((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                return (data['shopId'] ?? '') == _selectedShopId;
               }).toList();
             }
 
@@ -193,11 +205,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
             return SliverPadding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
               sliver: SliverGrid(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
+                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: 200.0,
                   mainAxisSpacing: 12.0,
                   crossAxisSpacing: 12.0,
-                  childAspectRatio: 0.65, // Adjusted for smaller card
+                  childAspectRatio: 0.72, // Adjusted for smaller floating card
                 ),
                 delegate: SliverChildBuilderDelegate((context, index) {
                   return _buildProductCard(docs[index]);
@@ -259,11 +271,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
             return SliverPadding(
               padding: const EdgeInsets.all(16.0),
               sliver: SliverGrid(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
+                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: 200.0,
                   mainAxisSpacing: 12.0,
                   crossAxisSpacing: 12.0,
-                  childAspectRatio: 0.8,
+                  childAspectRatio: 0.85,
                 ),
                 delegate: SliverChildBuilderDelegate((context, index) {
                   return _buildProductCard(docs[index]);
@@ -410,6 +422,56 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ],
               ),
+              if (status == 'pending') ...[
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: () async {
+                      final confirm = await showDialog<bool>(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text('Cancel Order'),
+                          content: const Text('Are you sure you want to cancel and remove this order?'),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              child: const Text('No'),
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              child: const Text('Yes, Cancel', style: TextStyle(color: Colors.red)),
+                            ),
+                          ],
+                        ),
+                      );
+                      
+                      if (confirm == true) {
+                        try {
+                          await FirebaseFirestore.instance.collection('orders').doc(docs[index].id).delete();
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Order cancelled and removed')),
+                            );
+                          }
+                        } catch (e) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Failed to cancel order: $e')),
+                            );
+                          }
+                        }
+                      }
+                    },
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.red,
+                      side: const BorderSide(color: Colors.red),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    child: const Text('Cancel Order'),
+                  ),
+                ),
+              ],
             ],
           ),
         );
@@ -614,37 +676,53 @@ class _DashboardScreenState extends State<DashboardScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 12),
             itemCount: shops.length,
             itemBuilder: (context, index) {
-              final shop = shops[index].data() as Map<String, dynamic>;
+              final shopDoc = shops[index];
+              final shop = shopDoc.data() as Map<String, dynamic>;
               final shopName = shop['name'] ?? 'Shop';
+              final shopId = shopDoc.id;
+              final isSelected = _selectedShopId == shopId;
+
               return Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Column(
-                  children: [
-                    Container(
-                      width: 75,
-                      height: 75,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4)),
-                        ],
-                      ),
-                      child: Center(
-                        child: Text(
-                          shopName.substring(0, 1).toUpperCase(),
-                          style: TextStyle(color: _lightBlue, fontSize: 32, fontWeight: FontWeight.bold),
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      if (_selectedShopId == shopId) {
+                        _selectedShopId = '';
+                      } else {
+                        _selectedShopId = shopId;
+                      }
+                    });
+                  },
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 75,
+                        height: 75,
+                        decoration: BoxDecoration(
+                          color: isSelected ? _lightBlue : Colors.white,
+                          shape: BoxShape.circle,
+                          border: isSelected ? Border.all(color: _lightBlue.withOpacity(0.3), width: 4) : null,
+                          boxShadow: [
+                            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4)),
+                          ],
+                        ),
+                        child: Center(
+                          child: Text(
+                            shopName.substring(0, 1).toUpperCase(),
+                            style: TextStyle(color: isSelected ? Colors.white : _lightBlue, fontSize: 32, fontWeight: FontWeight.bold),
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      shopName,
-                      style: TextStyle(color: _textColor, fontSize: 12, fontWeight: FontWeight.bold),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
+                      const SizedBox(height: 8),
+                      Text(
+                        shopName,
+                        style: TextStyle(color: isSelected ? _lightBlue : _textColor, fontSize: 12, fontWeight: FontWeight.bold),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
                 ),
               );
             },
@@ -663,12 +741,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
         : name;
     final String? imageUrl = data['imageUrl'];
     final double price = (data['pricePerKg'] as num?)?.toDouble() ?? 0.0;
+    final double stockQuantity = (data['stockQuantity'] as num?)?.toDouble() ?? 0.0;
+    final bool isOutOfStock = stockQuantity <= 0;
 
     return Container(
+      margin: const EdgeInsets.all(4), // Floating margin
       decoration: BoxDecoration(
         color: _cardColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 12,
+            spreadRadius: 2,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -696,56 +784,76 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  '₹$price / kg',
-                  style: TextStyle(color: _lightBlue, fontWeight: FontWeight.w900, fontSize: 13),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '₹$price / kg',
+                      style: TextStyle(color: _lightBlue, fontWeight: FontWeight.w900, fontSize: 13),
+                    ),
+                    if (isOutOfStock)
+                      const Text(
+                        'Out of Stock',
+                        style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 10),
+                      )
+                    else
+                      Text(
+                        '${stockQuantity.toStringAsFixed(1)}kg left',
+                        style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 10),
+                      ),
+                  ],
                 ),
                 const SizedBox(height: 8),
                 Row(
                   children: [
                     Expanded(
                       child: InkWell(
-                        onTap: () => _addToCart(doc),
-                        borderRadius: BorderRadius.circular(4),
+                        onTap: isOutOfStock ? null : () => _addToCart(doc),
+                        borderRadius: BorderRadius.circular(8),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          padding: const EdgeInsets.symmetric(vertical: 8),
                           decoration: BoxDecoration(
-                            color: _lightBlue.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(color: _lightBlue.withOpacity(0.3)),
+                            color: isOutOfStock ? Colors.grey.shade300 : _lightBlue.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(8),
                           ),
                           child: Center(
-                            child: Text('ADD', style: TextStyle(color: _lightBlue, fontWeight: FontWeight.w800, fontSize: 10)),
+                            child: Text('ADD', style: TextStyle(color: isOutOfStock ? Colors.grey : _lightBlue, fontWeight: FontWeight.bold, fontSize: 11)),
                           ),
                         ),
                       ),
                     ),
-                    const SizedBox(width: 6),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: InkWell(
-                        onTap: () {
-                          final directItem = {
-                            'productId': doc.id,
-                            'name': displayName.replaceAll('\\n', ' '),
-                            'pricePerKg': price,
-                            'quantity': 1.0,
-                            'shopId': data['shopId'] ?? '',
-                            'imageUrl': imageUrl,
-                          };
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => CheckoutScreen(
-                            totalAmount: price,
-                            directItems: [directItem],
-                          )));
+                        onTap: isOutOfStock ? null : () async {
+                          await _addToCart(doc);
+                          if (mounted) {
+                            Navigator.push(context, MaterialPageRoute(builder: (_) => const CheckoutScreen(
+                              totalAmount: 0,
+                            )));
+                          }
                         },
-                        borderRadius: BorderRadius.circular(4),
+                        borderRadius: BorderRadius.circular(8),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          padding: const EdgeInsets.symmetric(vertical: 8),
                           decoration: BoxDecoration(
-                            color: _lightBlue,
-                            borderRadius: BorderRadius.circular(4),
+                            gradient: isOutOfStock ? null : LinearGradient(
+                              colors: [_lightBlue, const Color(0xFF0077B6)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            color: isOutOfStock ? Colors.grey.shade400 : null,
+                            borderRadius: BorderRadius.circular(8),
+                            boxShadow: isOutOfStock ? [] : [
+                              BoxShadow(
+                                color: _lightBlue.withOpacity(0.3),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
                           ),
                           child: const Center(
-                            child: Text('BUY', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 10)),
+                            child: Text('BUY', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11)),
                           ),
                         ),
                       ),

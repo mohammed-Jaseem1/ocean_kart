@@ -91,13 +91,39 @@ class AuthGate extends StatelessWidget {
                 
                 if (role == 'Delivery Boy') {
                   return const DeliveryPartnerDashboard();
-                } else {
+                } else if (role == 'Shopkeeper') {
                   return const DashboardScreen();
+                } else {
+                  // If it's a 'customer' or unknown role, deny access
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    FirebaseAuth.instance.signOut();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Access Denied. Only Shopkeepers and Delivery Boys can log into this app.'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  });
+                  return const Scaffold(
+                    backgroundColor: Color(0xFF0A1628),
+                    body: Center(
+                      child: CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00B4D8)),
+                      ),
+                    ),
+                  );
                 }
               }
               
-              // Fallback to default dashboard if document not found
-              return const DashboardScreen();
+              // Fallback to loading while document doesn't exist
+              return const Scaffold(
+                backgroundColor: Color(0xFF0A1628),
+                body: Center(
+                  child: CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00B4D8)),
+                  ),
+                ),
+              );
             },
           );
         }

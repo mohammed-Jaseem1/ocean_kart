@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'inventory/add_product_screen.dart';
 import 'inventory/inventory_home_screen.dart';
 import 'profile_screen.dart';
+import 'orders_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -95,12 +96,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final List<Widget> _pages = [
       _buildDashboardContent(context, navyBlue, lightBlue),
       const InventoryHomeScreen(),
-      const Center(
-        child: Text(
-          'Orders Screen',
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: navyBlue),
-        ),
-      ),
+      const OrdersScreen(),
     ];
 
     return Scaffold(
