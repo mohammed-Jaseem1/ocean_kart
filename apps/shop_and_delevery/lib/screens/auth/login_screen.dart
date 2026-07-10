@@ -39,27 +39,35 @@ class _LoginScreenState extends State<LoginScreen> {
     final password = _passwordController.text.trim();
 
     try {
-      // Find user status by email
-      final querySnapshot = await FirebaseFirestore.instance
-          .collection('users')
-          .where('email', isEqualTo: email)
-          .limit(1)
-          .get();
+      // Sign in the user first to get Firebase Auth credentials
+      final userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
 
       if (!mounted) return;
 
-      if (querySnapshot.docs.isEmpty) {
+      // Now that we are authenticated, we can safely read from Firestore
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userCredential.user!.uid)
+          .get(const GetOptions(source: Source.server));
+
+      if (!userDoc.exists) {
+        await FirebaseAuth.instance.signOut();
         setState(() {
-          _errorMessage = 'No user found for this email address.';
+          _errorMessage = 'No user profile found.';
           _isLoading = false;
         });
         return;
       }
 
-      final userData = querySnapshot.docs.first.data();
+      final userData = userDoc.data() as Map<String, dynamic>;
 
-      // Check status before logging in to avoid AuthGate stream updates
+      // Check status
       if (userData['status'] == 'pending') {
+        // Sign out immediately if they are still pending
+        await FirebaseAuth.instance.signOut();
         setState(() {
           _errorMessage = 'Your account is pending admin approval.';
           _isLoading = false;
@@ -67,13 +75,7 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      // Sign in existing user
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-
-      // AuthGate will automatically navigate to Dashboard based on authStateChanges.
+      // If active, AuthGate will automatically navigate to Dashboard based on authStateChanges.
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -93,8 +95,9 @@ class _LoginScreenState extends State<LoginScreen> {
       });
     } catch (e) {
       if (!mounted) return;
+      print('Login error: $e');
       setState(() {
-        _errorMessage = 'An error occurred. Please try again later.';
+        _errorMessage = 'Error: $e';
       });
     } finally {
       if (mounted) {

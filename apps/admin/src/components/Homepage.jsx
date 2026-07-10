@@ -1,12 +1,69 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import UserApprovals from './UserApprovals';
+import Customers from './Customers';
+import Inventory from './Inventory';
+import Orders from './Orders';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '../firebase';
 import './Homepage.css';
 
 const Homepage = ({ user, onSignOut }) => {
   const [activeMenu, setActiveMenu] = useState('Overview');
   const [isAddUsersOpen, setIsAddUsersOpen] = useState(false);
 
+  const [dashboardData, setDashboardData] = useState({
+    totalRevenue: 0,
+    totalOrders: 0,
+    activeUsers: 0,
+    conversionRate: 0,
+    recentOrders: []
+  });
+
+  useEffect(() => {
+    if (activeMenu === 'Overview') {
+      fetchDashboardData();
+    }
+  }, [activeMenu]);
+
+  const fetchDashboardData = async () => {
+    try {
+      const usersQuery = query(collection(db, 'users'), where('status', '==', 'active'));
+      const usersSnapshot = await getDocs(usersQuery);
+      const activeUsersCount = usersSnapshot.size;
+
+      const ordersSnapshot = await getDocs(collection(db, 'orders'));
+      let revenue = 0;
+      let fetchedOrders = [];
+      ordersSnapshot.forEach(doc => {
+        const data = doc.data();
+        revenue += parseFloat(data.amount || data.totalAmount || 0);
+        fetchedOrders.push({ id: doc.id, ...data });
+      });
+      
+      const ordersCount = fetchedOrders.length;
+      
+      fetchedOrders = fetchedOrders.sort((a, b) => {
+          const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(0);
+          const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(0);
+          return dateB - dateA;
+      }).slice(0, 5);
+
+      setDashboardData({
+        totalRevenue: revenue,
+        totalOrders: ordersCount,
+        activeUsers: activeUsersCount,
+        conversionRate: ordersCount > 0 && activeUsersCount > 0 ? (ordersCount / activeUsersCount * 100).toFixed(2) : 0,
+        recentOrders: fetchedOrders
+      });
+    } catch (error) {
+      console.error("Error fetching dashboard data:", error);
+    }
+  };
+
   const isApprovalsView = activeMenu === 'Approvals';
+  const isCustomersView = activeMenu === 'Customers';
+  const isInventoryView = activeMenu === 'Inventory';
+  const isOrdersView = activeMenu === 'Orders';
 
   const menuItems = [
     {
@@ -38,14 +95,6 @@ const Homepage = ({ user, onSignOut }) => {
       )
     },
     {
-      name: 'Settings', icon: (
-        <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-          <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-          <circle cx="12" cy="12" r="3" />
-        </svg>
-      )
-    },
-    {
       name: 'Approvals', icon: (
         <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -54,13 +103,7 @@ const Homepage = ({ user, onSignOut }) => {
     },
   ];
 
-  const recentOrders = [
-    { id: '#OK-9082', customer: 'Sarah Jenkins', email: 'sarah.j@example.com', product: 'Premium Diving Fins', amount: '$189.00', status: 'Completed' },
-    { id: '#OK-9081', customer: 'Marcus Vance', email: 'marcus.v@example.com', product: 'Waterproof Action Cam', amount: '$349.00', status: 'Pending' },
-    { id: '#OK-9080', customer: 'Elena Rostova', email: 'elena.r@example.com', product: 'Snorkeling Set v2', amount: '$79.50', status: 'Completed' },
-    { id: '#OK-9079', customer: 'David Kim', email: 'david.k@example.com', product: 'Oceanic Smart Watch', amount: '$599.00', status: 'Cancelled' },
-    { id: '#OK-9078', customer: 'Clara Oswald', email: 'clara.o@example.com', product: 'Neoprene Wetsuit', amount: '$249.00', status: 'Completed' },
-  ];
+
 
   const userInitial = user?.email ? user.email.charAt(0).toUpperCase() : 'A';
   const userDisplayName = user?.email ? user.email.split('@')[0] : 'Administrator';
@@ -134,8 +177,8 @@ const Homepage = ({ user, onSignOut }) => {
       <main className="main-content">
         <header className="dashboard-header">
           <div className="header-title">
-            <h1>{isApprovalsView ? 'Pending Approvals' : 'Dashboard Overview'}</h1>
-            <p>{isApprovalsView ? 'Manage pending registration requests across all roles.' : 'Welcome back, here is what is happening with OceanKart today.'}</p>
+            <h1>{isApprovalsView ? 'Pending Approvals' : isCustomersView ? 'Registered Customers' : isInventoryView ? 'Shop Inventory' : isOrdersView ? 'All Orders' : 'Dashboard Overview'}</h1>
+            <p>{isApprovalsView ? 'Manage pending registration requests across all roles.' : isCustomersView ? 'View and manage all registered users.' : isInventoryView ? 'Manage global inventory across all shops.' : isOrdersView ? 'View and manage all customer orders.' : 'Welcome back, here is what is happening with OceanKart today.'}</p>
           </div>
 
           <div className="header-actions">
@@ -157,6 +200,12 @@ const Homepage = ({ user, onSignOut }) => {
 
         {isApprovalsView ? (
           <UserApprovals />
+        ) : isCustomersView ? (
+          <Customers />
+        ) : isInventoryView ? (
+          <Inventory />
+        ) : isOrdersView ? (
+          <Orders />
         ) : (
           <>
             {/* KPI Metrics Widgets */}
@@ -168,7 +217,7 @@ const Homepage = ({ user, onSignOut }) => {
               </svg>
             </div>
             <span className="kpi-title">Total Revenue</span>
-            <span className="kpi-value">$48,254.00</span>
+            <span className="kpi-value">${dashboardData.totalRevenue.toFixed(2)}</span>
             <div className="kpi-trend trend-up">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
                 <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" /><polyline points="17 6 23 6 23 12" />
@@ -184,7 +233,7 @@ const Homepage = ({ user, onSignOut }) => {
               </svg>
             </div>
             <span className="kpi-title">Total Orders</span>
-            <span className="kpi-value">1,842</span>
+            <span className="kpi-value">{dashboardData.totalOrders}</span>
             <div className="kpi-trend trend-up">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
                 <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" /><polyline points="17 6 23 6 23 12" />
@@ -200,7 +249,7 @@ const Homepage = ({ user, onSignOut }) => {
               </svg>
             </div>
             <span className="kpi-title">Active Users</span>
-            <span className="kpi-value">12,482</span>
+            <span className="kpi-value">{dashboardData.activeUsers}</span>
             <div className="kpi-trend trend-up">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
                 <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" /><polyline points="17 6 23 6 23 12" />
@@ -216,7 +265,7 @@ const Homepage = ({ user, onSignOut }) => {
               </svg>
             </div>
             <span className="kpi-title">Conversion Rate</span>
-            <span className="kpi-value">3.42%</span>
+            <span className="kpi-value">{dashboardData.conversionRate}%</span>
             <div className="kpi-trend trend-down">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
                 <polyline points="23 18 13.5 8.5 8.5 13.5 1 6" /><polyline points="17 18 23 18 23 12" />
@@ -337,29 +386,33 @@ const Homepage = ({ user, onSignOut }) => {
                 </tr>
               </thead>
               <tbody>
-                {recentOrders.map((order) => (
+                {dashboardData.recentOrders.length > 0 ? dashboardData.recentOrders.map((order) => (
                   <tr key={order.id}>
-                    <td style={{ fontWeight: '600', color: '#00b4d8' }}>{order.id}</td>
+                    <td style={{ fontWeight: '600', color: '#00b4d8' }}>{order.orderId || order.id.substring(0, 8)}</td>
                     <td>
                       <div className="customer-cell">
                         <div className="customer-avatar">
-                          {order.customer.split(' ').map(n => n[0]).join('')}
+                          {(order.customerName || order.userName || 'U').charAt(0).toUpperCase()}
                         </div>
                         <div>
-                          <div style={{ fontWeight: '600' }}>{order.customer}</div>
-                          <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>{order.email}</div>
+                          <div style={{ fontWeight: '600' }}>{order.customerName || order.userName || 'Unknown'}</div>
+                          <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>{order.customerEmail || order.userEmail || ''}</div>
                         </div>
                       </div>
                     </td>
-                    <td>{order.product}</td>
-                    <td style={{ fontWeight: '600' }}>{order.amount}</td>
+                    <td>{order.productName || order.product || 'Various'}</td>
+                    <td style={{ fontWeight: '600' }}>${parseFloat(order.amount || order.totalAmount || 0).toFixed(2)}</td>
                     <td>
-                      <span className={`badge ${order.status.toLowerCase()}`}>
-                        {order.status}
+                      <span className={`badge ${(order.status || 'pending').toLowerCase()}`}>
+                        {order.status || 'Pending'}
                       </span>
                     </td>
                   </tr>
-                ))}
+                )) : (
+                  <tr>
+                    <td colSpan="5" style={{ textAlign: 'center', padding: '20px', color: '#64748b' }}>No recent orders found.</td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

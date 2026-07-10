@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'inventory/add_product_screen.dart';
 import 'inventory/inventory_home_screen.dart';
 import 'profile_screen.dart';
@@ -13,6 +14,77 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   int _selectedIndex = 0;
+  final User? currentUser = FirebaseAuth.instance.currentUser;
+  
+  int todayOrders = 0;
+  int pendingOrders = 0;
+  int completedOrders = 0;
+  double totalRevenue = 0.0;
+  bool isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchDashboardData();
+  }
+
+  Future<void> _fetchDashboardData() async {
+    if (currentUser == null) return;
+    
+    try {
+      final now = DateTime.now();
+      final startOfDay = DateTime(now.year, now.month, now.day);
+      
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('orders')
+          .where('shopId', isEqualTo: currentUser!.uid)
+          .get();
+          
+      int today = 0;
+      int pending = 0;
+      int completed = 0;
+      double revenue = 0.0;
+      
+      for (var doc in querySnapshot.docs) {
+        final data = doc.data();
+        final status = (data['status'] ?? '').toString().toLowerCase();
+        
+        if (data['createdAt'] != null && data['createdAt'] is Timestamp) {
+           final Timestamp ts = data['createdAt'];
+           final date = ts.toDate();
+           if (date.isAfter(startOfDay)) {
+             today++;
+           }
+        } else {
+           today++; 
+        }
+
+        if (status == 'pending') {
+          pending++;
+        } else if (status == 'completed' || status == 'delivered') {
+          completed++;
+          revenue += (data['totalAmount'] ?? data['amount'] ?? 0.0).toDouble();
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          todayOrders = today;
+          pendingOrders = pending;
+          completedOrders = completed;
+          totalRevenue = revenue;
+          isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error fetching dashboard data: $e");
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -101,31 +173,44 @@ class _DashboardScreenState extends State<DashboardScreen> {
         children: [
             // Welcome Header
             Container(
-              padding: const EdgeInsets.all(24.0),
-              decoration: BoxDecoration(
-                color: navyBlue,
-                borderRadius: const BorderRadius.only(
-                  bottomLeft: Radius.circular(30),
-                  bottomRight: Radius.circular(30),
+              padding: const EdgeInsets.all(28.0),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFF0A1628), Color(0xFF003049)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
+                borderRadius: BorderRadius.only(
+                  bottomLeft: Radius.circular(40),
+                  bottomRight: Radius.circular(40),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black26,
+                    offset: Offset(0, 8),
+                    blurRadius: 15,
+                  )
+                ]
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Welcome,',
+                    'Welcome back,',
                     style: TextStyle(
                       fontSize: 16,
-                      color: Colors.white.withOpacity(0.7),
+                      fontWeight: FontWeight.w400,
+                      color: Colors.white.withOpacity(0.8),
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 6),
                   const Text(
                     'Ocean Fresh Fish Shop',
                     style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
+                      fontSize: 26,
+                      fontWeight: FontWeight.w800,
                       color: Colors.white,
+                      letterSpacing: 0.5,
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -162,27 +247,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     children: [
                       _buildStatCard(
                         title: 'Orders Today',
-                        value: '15',
-                        icon: Icons.shopping_bag_outlined,
+                        value: isLoading ? '...' : todayOrders.toString(),
+                        icon: Icons.shopping_bag_rounded,
                         color: lightBlue,
                       ),
                       _buildStatCard(
                         title: 'Pending',
-                        value: '4',
-                        icon: Icons.pending_actions,
-                        color: Colors.orangeAccent,
+                        value: isLoading ? '...' : pendingOrders.toString(),
+                        icon: Icons.pending_actions_rounded,
+                        color: const Color(0xFFFF9F43),
                       ),
                       _buildStatCard(
                         title: 'Completed',
-                        value: '11',
-                        icon: Icons.check_circle_outline,
-                        color: Colors.greenAccent.shade700,
+                        value: isLoading ? '...' : completedOrders.toString(),
+                        icon: Icons.check_circle_rounded,
+                        color: const Color(0xFF2ED573),
                       ),
                       _buildStatCard(
                         title: 'Revenue',
-                        value: '₹8,250',
-                        icon: Icons.account_balance_wallet_outlined,
-                        color: navyBlue,
+                        value: isLoading ? '...' : '₹${totalRevenue.toStringAsFixed(0)}',
+                        icon: Icons.account_balance_wallet_rounded,
+                        color: const Color(0xFF00B4D8),
                       ),
                     ],
                   ),
@@ -212,22 +297,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       );
                     },
                   ),
-                  const SizedBox(height: 12),
-                  _buildQuickActionButton(
-                    icon: Icons.receipt_long,
-                    title: 'View Orders',
-                    subtitle: 'Manage and process customer orders',
-                    color: navyBlue,
-                    onTap: () {},
-                  ),
-                  const SizedBox(height: 12),
-                  _buildQuickActionButton(
-                    icon: Icons.inventory_2_outlined,
-                    title: 'Inventory',
-                    subtitle: 'Update stock and prices',
-                    color: Colors.blueGrey,
-                    onTap: () {},
-                  ),
                   
                   const SizedBox(height: 32),
                 ],
@@ -244,18 +313,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
     required IconData icon,
     required Color color,
   }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: color.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: color.withOpacity(0.12),
+            blurRadius: 15,
+            spreadRadius: 2,
+            offset: const Offset(0, 6),
           ),
         ],
+        border: Border.all(color: color.withOpacity(0.05)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -264,15 +337,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Icon(icon, color: color, size: 28),
               Container(
-                padding: const EdgeInsets.all(6),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
-                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    colors: [color.withOpacity(0.2), color.withOpacity(0.05)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(14),
                 ),
-                child: Icon(Icons.arrow_forward_ios, size: 12, color: color),
-              )
+                child: Icon(icon, color: color, size: 26),
+              ),
+              Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Colors.grey.shade400)
             ],
           ),
           Column(
@@ -281,17 +358,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
               Text(
                 value,
                 style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
+                  fontSize: 26,
+                  fontWeight: FontWeight.w900,
                   color: Color(0xFF0A1628), // Navy blue
+                  letterSpacing: -0.5,
                 ),
               ),
+              const SizedBox(height: 2),
               Text(
                 title,
                 style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.grey.shade600,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey.shade500,
                 ),
               ),
             ],
@@ -310,32 +389,40 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(20),
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
+          gradient: LinearGradient(
+            colors: [Colors.white, Colors.grey.shade50],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+          borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.03),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
+              color: color.withOpacity(0.08),
+              blurRadius: 15,
+              offset: const Offset(0, 6),
             ),
           ],
-          border: Border.all(color: Colors.grey.shade100),
+          border: Border.all(color: color.withOpacity(0.1)),
         ),
         child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
+                gradient: LinearGradient(
+                  colors: [color.withOpacity(0.2), color.withOpacity(0.05)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(16),
               ),
-              child: Icon(icon, color: color, size: 28),
+              child: Icon(icon, color: color, size: 30),
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 20),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -343,23 +430,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   Text(
                     title,
                     style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
                       color: Color(0xFF0A1628),
                     ),
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 4),
                   Text(
                     subtitle,
                     style: TextStyle(
-                      fontSize: 13,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
                       color: Colors.grey.shade600,
                     ),
                   ),
                 ],
               ),
             ),
-            Icon(Icons.chevron_right, color: Colors.grey.shade400),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.arrow_forward_ios_rounded, color: Colors.grey.shade500, size: 16),
+            ),
           ],
         ),
       ),

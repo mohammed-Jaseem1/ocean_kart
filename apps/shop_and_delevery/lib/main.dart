@@ -72,7 +72,7 @@ class AuthGate extends StatelessWidget {
         // If the user has active session, show the correct Dashboard based on role
         if (snapshot.hasData) {
           return FutureBuilder<DocumentSnapshot>(
-            future: FirebaseFirestore.instance.collection('users').doc(snapshot.data!.uid).get(),
+            future: FirebaseFirestore.instance.collection('users').doc(snapshot.data!.uid).get(const GetOptions(source: Source.server)),
             builder: (context, userSnapshot) {
               if (userSnapshot.connectionState == ConnectionState.waiting) {
                 return const Scaffold(

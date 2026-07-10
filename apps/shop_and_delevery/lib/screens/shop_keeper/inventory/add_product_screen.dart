@@ -26,6 +26,8 @@ class _AddProductScreenState extends State<AddProductScreen> {
   
   final _nameController = TextEditingController();
   final _malayalamNameController = TextEditingController();
+  final _priceController = TextEditingController();
+  final _quantityController = TextEditingController();
   
   String _selectedCategory = 'Sea Water Fish';
   final List<String> _categories = [
@@ -49,6 +51,8 @@ class _AddProductScreenState extends State<AddProductScreen> {
       _malayalamNameController.text = widget.productData!['malayalamName'] ?? '';
       _selectedCategory = widget.productData!['category'] ?? 'Sea Water Fish';
       _imageUrl = widget.productData!['imageUrl'];
+      _priceController.text = widget.productData!['pricePerKg']?.toString() ?? '';
+      _quantityController.text = widget.productData!['stockQuantity']?.toString() ?? '';
     }
   }
 
@@ -56,6 +60,8 @@ class _AddProductScreenState extends State<AddProductScreen> {
   void dispose() {
     _nameController.dispose();
     _malayalamNameController.dispose();
+    _priceController.dispose();
+    _quantityController.dispose();
     super.dispose();
   }
 
@@ -83,7 +89,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
         ),
         WebUiSettings(
           context: context,
-          presentStyle: WebPresentStyle.dialog,
+          presentStyle: WebPresentStyle.page,
         ),
       ],
     );
@@ -151,6 +157,8 @@ class _AddProductScreenState extends State<AddProductScreen> {
         'malayalamName': _malayalamNameController.text.trim(),
         'category': _selectedCategory,
         'imageUrl': _imageUrl,
+        'pricePerKg': double.tryParse(_priceController.text.trim()) ?? 0.0,
+        'stockQuantity': double.tryParse(_quantityController.text.trim()) ?? 0.0,
       };
 
       if (widget.productId != null) {
@@ -394,6 +402,30 @@ class _AddProductScreenState extends State<AddProductScreen> {
                           });
                         }
                       },
+                    ),
+                    const SizedBox(height: 16),
+
+                    buildLabel('SALE PRICE (₹ PER KG) *'),
+                    TextFormField(
+                      controller: _priceController,
+                      style: const TextStyle(color: Colors.black),
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: inputDecoration.copyWith(
+                        hintText: 'e.g. 250',
+                      ),
+                      validator: (value) => value == null || value.isEmpty ? 'Required' : null,
+                    ),
+                    const SizedBox(height: 16),
+
+                    buildLabel('INITIAL QUANTITY (KG) *'),
+                    TextFormField(
+                      controller: _quantityController,
+                      style: const TextStyle(color: Colors.black),
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: inputDecoration.copyWith(
+                        hintText: 'e.g. 10',
+                      ),
+                      validator: (value) => value == null || value.isEmpty ? 'Required' : null,
                     ),
                     const SizedBox(height: 32),
 

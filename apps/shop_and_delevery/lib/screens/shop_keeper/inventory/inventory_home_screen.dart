@@ -16,6 +16,71 @@ class _InventoryHomeScreenState extends State<InventoryHomeScreen> {
   final user = FirebaseAuth.instance.currentUser;
   String _selectedCategory = 'All';
 
+  Future<void> _updateStock(String productId, double currentStock, double change) async {
+    final newStock = currentStock + change;
+    if (newStock < 0) return;
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user!.uid)
+          .collection('products')
+          .doc(productId)
+          .update({'stockQuantity': newStock});
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error updating stock: $e')));
+    }
+  }
+
+  Future<void> _editPrice(String productId, double currentPrice) async {
+    final _priceController = TextEditingController(text: currentPrice.toString());
+    final result = await showDialog<double>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Edit Sale Price (₹)', style: TextStyle(color: Colors.black)),
+          backgroundColor: Colors.white,
+          content: TextField(
+            controller: _priceController,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            style: const TextStyle(color: Colors.black),
+            decoration: const InputDecoration(
+              hintText: 'Enter new price',
+              hintStyle: TextStyle(color: Colors.grey),
+              enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final newPrice = double.tryParse(_priceController.text);
+                Navigator.pop(context, newPrice);
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.black),
+              child: const Text('Save', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (result != null && result >= 0) {
+      try {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user!.uid)
+            .collection('products')
+            .doc(productId)
+            .update({'pricePerKg': result});
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error updating price: $e')));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     const navyBlue = Color(0xFF0A1628);
@@ -65,10 +130,8 @@ class _InventoryHomeScreenState extends State<InventoryHomeScreen> {
 
                 final docs = allDocs.where((doc) {
                   final data = doc.data() as Map<String, dynamic>;
-                  final stock = (data['stockQuantity'] as num?)?.toDouble() ?? 0.0;
                   final category = data['category'] ?? '';
-                  final matchesCategory = _selectedCategory == 'All' || category == _selectedCategory;
-                  return stock > 0 && matchesCategory;
+                  return _selectedCategory == 'All' || category == _selectedCategory;
                 }).toList();
 
                 return Column(
@@ -118,61 +181,107 @@ class _InventoryHomeScreenState extends State<InventoryHomeScreen> {
                   itemCount: docs.length,
                   itemBuilder: (context, index) {
                     final data = docs[index].data() as Map<String, dynamic>;
+                    final productId = docs[index].id;
+                    final currentStock = (data['stockQuantity'] as num?)?.toDouble() ?? 0.0;
+                    final currentPrice = (data['pricePerKg'] as num?)?.toDouble() ?? 0.0;
+
                     return Card(
                       color: Colors.white,
                       elevation: 2,
                       margin: const EdgeInsets.only(bottom: 12),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        leading: Container(
-                          width: 50,
-                          height: 50,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(10),
-                            image: data['imageUrl'] != null
-                                ? DecorationImage(
-                                    image: data['imageUrl'].startsWith('http')
-                                        ? NetworkImage(data['imageUrl']) as ImageProvider
-                                        : MemoryImage(base64Decode(data['imageUrl'])),
-                                    fit: BoxFit.cover,
-                                  )
-                                : null,
-                            color: Colors.grey.shade200,
-                          ),
-                          child: data['imageUrl'] == null ? const Icon(Icons.image, color: Colors.grey) : null,
-                        ),
-                        title: Text(
-                          data['malayalamName'] != null && data['malayalamName'].toString().isNotEmpty
-                              ? '${data['name'] ?? 'Unknown'} (${data['malayalamName']})'
-                              : data['name'] ?? 'Unknown',
-                          style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16),
-                        ),
-                        subtitle: Column(
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const SizedBox(height: 2),
-                            Text('${data['category'] ?? ''}', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
-                            const SizedBox(height: 2),
-                            Row(
+                            Container(
+                              width: 60,
+                              height: 60,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(10),
+                                image: data['imageUrl'] != null
+                                    ? DecorationImage(
+                                        image: data['imageUrl'].startsWith('http')
+                                            ? NetworkImage(data['imageUrl']) as ImageProvider
+                                            : MemoryImage(base64Decode(data['imageUrl'])),
+                                        fit: BoxFit.cover,
+                                      )
+                                    : null,
+                                color: Colors.grey.shade200,
+                              ),
+                              child: data['imageUrl'] == null ? const Icon(Icons.image, color: Colors.grey) : null,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    data['malayalamName'] != null && data['malayalamName'].toString().isNotEmpty
+                                        ? '${data['name'] ?? 'Unknown'} (${data['malayalamName']})'
+                                        : data['name'] ?? 'Unknown',
+                                    style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text('${data['category'] ?? ''}', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    children: [
+                                      Text('₹$currentPrice / kg', style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 15)),
+                                      const SizedBox(width: 8),
+                                      InkWell(
+                                        onTap: () => _editPrice(productId, currentPrice),
+                                        child: Container(
+                                          padding: const EdgeInsets.all(4),
+                                          decoration: BoxDecoration(
+                                            color: Colors.grey.shade100,
+                                            borderRadius: BorderRadius.circular(4),
+                                            border: Border.all(color: Colors.grey.shade300)
+                                          ),
+                                          child: const Icon(Icons.edit, size: 14, color: Colors.black54),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Column(
                               children: [
-                                Text('Inward: ₹${data['inwardPrice'] ?? 0}', style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.w600, fontSize: 13)),
-                                const SizedBox(width: 12),
-                                Text('Sale: ₹${data['pricePerKg'] ?? 0}', style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 13)),
+                                const Text('Stock (kg)', style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w600)),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    InkWell(
+                                      onTap: () => _updateStock(productId, currentStock, -1.0),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(4),
+                                        decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(4)),
+                                        child: const Icon(Icons.remove, size: 16, color: Colors.black),
+                                      ),
+                                    ),
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                                      child: Text(
+                                        currentStock == currentStock.toInt() ? '${currentStock.toInt()}' : currentStock.toStringAsFixed(1), 
+                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black)
+                                      ),
+                                    ),
+                                    InkWell(
+                                      onTap: () => _updateStock(productId, currentStock, 1.0),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(4),
+                                        decoration: BoxDecoration(color: lightBlue.withOpacity(0.2), borderRadius: BorderRadius.circular(4)),
+                                        child: const Icon(Icons.add, size: 16, color: lightBlue),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ],
                             ),
-                            const SizedBox(height: 2),
-                            Text('Stock: ${data['stockQuantity'] ?? 0} Kg', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13)),
                           ],
                         ),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => AddStockScreen(initialProductId: docs[index].id),
-                            ),
-                          );
-                        },
                       ),
                     );
                   },
