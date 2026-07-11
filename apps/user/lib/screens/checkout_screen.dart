@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:convert';
+import 'location_picker_screen.dart';
 
 class CheckoutScreen extends StatefulWidget {
   final double totalAmount;
@@ -25,6 +26,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   List<Map<String, dynamic>> _itemsToOrder = [];
   double _calculatedTotal = 0.0;
+  double? _deliveryLat;
+  double? _deliveryLon;
 
   @override
   void initState() {
@@ -121,7 +124,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   void _updatePreparation(int index, String option, bool isSelected) {
     setState(() {
-      final List<String> current = List<String>.from(_itemsToOrder[index]['preparation'] ?? []);
+      final List<String> current = List<String>.from(
+        _itemsToOrder[index]['preparation'] ?? [],
+      );
       if (isSelected) {
         if (!current.contains(option)) current.add(option);
       } else {
@@ -131,107 +136,53 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     });
   }
 
-  Future<void> _showDummyMap() async {
-    final result = await showModalBottomSheet<String>(
+  Future<void> _removeItem(int index) async {
+    final item = _itemsToOrder[index];
+    
+    setState(() {
+      _itemsToOrder.removeAt(index);
+      _recalculateTotal();
+    });
+
+    // Also remove from Firestore cart if this is a cart checkout
+    if (widget.directItems == null || widget.directItems!.isEmpty) {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null && item['productId'] != null) {
+        try {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .collection('cart')
+              .doc(item['productId'])
+              .delete();
+        } catch (e) {
+          print('Error removing from cart: $e');
+        }
+      }
+    }
+
+    if (_itemsToOrder.isEmpty) {
+      if (mounted) {
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
+    }
+  }
+
+  Future<void> _showLocationPicker() async {
+    final result = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
-        return Container(
-          height: MediaQuery.of(context).size.height * 0.7,
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          child: Column(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(color: Colors.grey.shade200),
-                  ),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Select Delivery Location',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    // Dummy Map Image
-                    Container(
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade200,
-                        image: const DecorationImage(
-                          image: NetworkImage(
-                            'https://i.stack.imgur.com/HILmr.png',
-                          ), // A generic dummy map
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                    ),
-                    const Icon(
-                      Icons.location_on,
-                      color: Colors.red,
-                      size: 48,
-                    ), // Dummy pin
-                    Positioned(
-                      bottom: 24,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF00B4D8),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 48,
-                            vertical: 16,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        onPressed: () {
-                          // Return a dummy selected address
-                          Navigator.pop(
-                            context,
-                            '123 Ocean View Drive, Kochi, Kerala',
-                          );
-                        },
-                        child: const Text(
-                          'Confirm Location',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        );
+        return const LocationPickerBottomSheet();
       },
     );
 
     if (result != null) {
       setState(() {
-        _addressController.text = result;
+        _addressController.text = result['address'] as String;
+        _deliveryLat = result['lat'] as double?;
+        _deliveryLon = result['lon'] as double?;
       });
     }
   }
@@ -280,19 +231,36 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               .collection('products')
               .doc(productId)
               .get();
-              
+
           if (!productDoc.exists) {
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$name is no longer available.', style: const TextStyle(color: Colors.white)), backgroundColor: Colors.red));
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    '$name is no longer available.',
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  backgroundColor: Colors.red,
+                ),
+              );
               setState(() => _isLoading = false);
             }
             return;
           }
-          
-          final currentStock = (productDoc.data()?['stockQuantity'] as num?)?.toDouble() ?? 0.0;
+
+          final currentStock =
+              (productDoc.data()?['stockQuantity'] as num?)?.toDouble() ?? 0.0;
           if (currentStock < qty) {
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Sorry, only ${currentStock.toStringAsFixed(1)}kg of $name is available.', style: const TextStyle(color: Colors.white)), backgroundColor: Colors.red));
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Sorry, only ${currentStock.toStringAsFixed(1)}kg of $name is available.',
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  backgroundColor: Colors.red,
+                ),
+              );
               setState(() => _isLoading = false);
             }
             return;
@@ -301,9 +269,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       }
 
       // 1.5 Fetch user profile data
-      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
       final userData = userDoc.data() ?? {};
-      final String customerName = userData['name'] ?? user.displayName ?? 'Unknown Customer';
+      final String customerName =
+          userData['name'] ?? user.displayName ?? 'Unknown Customer';
       final String customerEmail = userData['email'] ?? user.email ?? '';
 
       // 2. Create Order
@@ -315,6 +287,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         'items': _itemsToOrder,
         'totalAmount': _calculatedTotal,
         'deliveryAddress': _addressController.text.trim(),
+        'deliveryLat': _deliveryLat,
+        'deliveryLon': _deliveryLon,
         'phone': _phoneController.text.trim(),
         'paymentMethod': 'COD',
         'status': 'pending',
@@ -326,19 +300,26 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         final String? shopId = item['shopId'];
         final String? productId = item['productId'];
         final double qty = (item['quantity'] as num?)?.toDouble() ?? 1.0;
-        
-        if (shopId != null && productId != null && shopId.isNotEmpty && productId.isNotEmpty) {
+
+        if (shopId != null &&
+            productId != null &&
+            shopId.isNotEmpty &&
+            productId.isNotEmpty) {
           final productRef = FirebaseFirestore.instance
               .collection('users')
               .doc(shopId)
               .collection('products')
               .doc(productId);
-              
+
           try {
-            await FirebaseFirestore.instance.runTransaction((transaction) async {
+            await FirebaseFirestore.instance.runTransaction((
+              transaction,
+            ) async {
               final snapshot = await transaction.get(productRef);
               if (snapshot.exists) {
-                final currentStock = (snapshot.data()?['stockQuantity'] as num?)?.toDouble() ?? 0.0;
+                final currentStock =
+                    (snapshot.data()?['stockQuantity'] as num?)?.toDouble() ??
+                    0.0;
                 final newStock = currentStock - qty;
                 transaction.update(productRef, {
                   'stockQuantity': newStock < 0 ? 0.0 : newStock,
@@ -486,9 +467,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         ),
                       ),
                       TextButton.icon(
-                        onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
+                        onPressed: () => Navigator.of(
+                          context,
+                        ).popUntil((route) => route.isFirst),
                         icon: const Icon(Icons.add, color: Color(0xFF00B4D8)),
-                        label: const Text('Add More', style: TextStyle(color: Color(0xFF00B4D8), fontWeight: FontWeight.bold)),
+                        label: const Text(
+                          'Add More',
+                          style: TextStyle(
+                            color: Color(0xFF00B4D8),
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -505,10 +494,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       final price = (item['pricePerKg'] as num).toDouble();
                       final imageUrl = item['imageUrl'];
 
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Stack(
+                          children: [
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(16),
                           boxShadow: [
@@ -618,7 +611,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                               children: [
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       const Text(
                                         'Preparation Options (Select multiple):',
@@ -631,26 +625,63 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                       Wrap(
                                         spacing: 8,
                                         runSpacing: 8,
-                                        children: ['Cleaning', 'Cut for Curry', 'Cut for Fry'].map((option) {
-                                          final isSelected = ((item['preparation'] ?? []) as List).contains(option);
-                                          return FilterChip(
-                                            label: Text(option, style: const TextStyle(fontSize: 12)),
-                                            selected: isSelected,
-                                            onSelected: (selected) => _updatePreparation(index, option, selected),
-                                            selectedColor: const Color(0xFF00B4D8).withOpacity(0.2),
-                                            checkmarkColor: const Color(0xFF00B4D8),
-                                          );
-                                        }).toList(),
+                                        children:
+                                            [
+                                              'Cleaning',
+                                              'Cut for Curry',
+                                              'Cut for Fry',
+                                            ].map((option) {
+                                              final isSelected =
+                                                  ((item['preparation'] ?? [])
+                                                          as List)
+                                                      .contains(option);
+                                              return FilterChip(
+                                                label: Text(
+                                                  option,
+                                                  style: const TextStyle(
+                                                    fontSize: 12,
+                                                  ),
+                                                ),
+                                                selected: isSelected,
+                                                onSelected: (selected) =>
+                                                    _updatePreparation(
+                                                      index,
+                                                      option,
+                                                      selected,
+                                                    ),
+                                                selectedColor: const Color(
+                                                  0xFF00B4D8,
+                                                ).withOpacity(0.2),
+                                                checkmarkColor: const Color(
+                                                  0xFF00B4D8,
+                                                ),
+                                              );
+                                            }).toList(),
                                       ),
                                     ],
                                   ),
                                 ),
                               ],
-                            ),
-                          ],
+                            ), // closes Row
+                          ], // closes main Column children
+                        ), // closes main Column
+                      ), // closes Container
+                      Positioned(
+                        top: 0,
+                        right: 0,
+                        child: IconButton(
+                          icon: const Icon(
+                            Icons.cancel,
+                            color: Colors.grey,
+                            size: 24,
+                          ),
+                          onPressed: () => _removeItem(index),
                         ),
-                      );
-                    },
+                      ),
+                    ], // closes Stack children
+                  ), // closes Stack
+                ); // closes Padding
+              },
                   ),
 
                   const SizedBox(height: 24),
@@ -691,7 +722,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     child: Column(
                       children: [
                         InkWell(
-                          onTap: _showDummyMap,
+                          onTap: _showLocationPicker,
                           child: Container(
                             width: double.infinity,
                             padding: const EdgeInsets.all(16),
@@ -720,7 +751,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         TextField(
                           controller: _addressController,
                           maxLines: 2,
-                          style: const TextStyle(fontSize: 15, color: Colors.black87),
+                          style: const TextStyle(
+                            fontSize: 15,
+                            color: Colors.black87,
+                          ),
                           decoration: InputDecoration(
                             hintText: 'Enter complete address or select on map',
                             hintStyle: TextStyle(color: Colors.grey.shade400),
@@ -756,7 +790,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     child: TextField(
                       controller: _phoneController,
                       keyboardType: TextInputType.phone,
-                      style: const TextStyle(fontSize: 15, color: Colors.black87),
+                      style: const TextStyle(
+                        fontSize: 15,
+                        color: Colors.black87,
+                      ),
                       decoration: InputDecoration(
                         hintText: 'Phone Number',
                         hintStyle: TextStyle(color: Colors.grey.shade400),

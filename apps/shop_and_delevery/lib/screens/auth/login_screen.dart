@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'registration_page.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -108,6 +109,201 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _signInWithGoogle() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      UserCredential userCredential;
+
+      if (kIsWeb) {
+        GoogleAuthProvider googleProvider = GoogleAuthProvider();
+        userCredential = await FirebaseAuth.instance.signInWithPopup(googleProvider);
+      } else {
+        GoogleAuthProvider googleProvider = GoogleAuthProvider();
+        userCredential = await FirebaseAuth.instance.signInWithProvider(googleProvider);
+      }
+
+      if (userCredential.user != null) {
+        final doc = await FirebaseFirestore.instance.collection('users').doc(userCredential.user!.uid).get();
+        if (!doc.exists) {
+          await FirebaseAuth.instance.signOut();
+          setState(() {
+            _errorMessage = 'No partner profile found for this Google account.';
+          });
+          return;
+        }
+        final userData = doc.data() as Map<String, dynamic>;
+        if (userData['status'] == 'pending') {
+          await FirebaseAuth.instance.signOut();
+          setState(() {
+            _errorMessage = 'Your account is pending admin approval.';
+          });
+          return;
+        }
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Google Sign-In failed: $e';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _signInWithPhone() async {
+    final phoneController = TextEditingController();
+    
+    // Show dialog to get phone number
+    final phone = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF132238),
+        title: const Text('Enter Phone Number', style: TextStyle(color: Colors.white)),
+        content: TextField(
+          controller: phoneController,
+          style: const TextStyle(color: Colors.white),
+          keyboardType: TextInputType.phone,
+          decoration: InputDecoration(
+            hintText: '+91 9876543210',
+            hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+            enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white)),
+            focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF00B4D8))),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, phoneController.text.trim()),
+            child: const Text('Send OTP', style: TextStyle(color: Color(0xFF00B4D8))),
+          ),
+        ],
+      ),
+    );
+
+    if (phone == null || phone.isEmpty) return;
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      await FirebaseAuth.instance.verifyPhoneNumber(
+        phoneNumber: phone,
+        verificationCompleted: (PhoneAuthCredential credential) async {
+          await _signInWithPhoneCredential(credential, phone);
+        },
+        verificationFailed: (FirebaseAuthException e) {
+          setState(() {
+            _errorMessage = 'Phone verification failed: ${e.message}';
+            _isLoading = false;
+          });
+        },
+        codeSent: (String verificationId, int? resendToken) async {
+          setState(() {
+            _isLoading = false;
+          });
+          // Show dialog to enter OTP
+          final otpController = TextEditingController();
+          final otp = await showDialog<String>(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => AlertDialog(
+              backgroundColor: const Color(0xFF132238),
+              title: const Text('Enter OTP', style: TextStyle(color: Colors.white)),
+              content: TextField(
+                controller: otpController,
+                style: const TextStyle(color: Colors.white),
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  hintText: '123456',
+                  hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+                  enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white)),
+                  focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF00B4D8))),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, otpController.text.trim()),
+                  child: const Text('Verify', style: TextStyle(color: Color(0xFF00B4D8))),
+                ),
+              ],
+            ),
+          );
+
+          if (otp != null && otp.isNotEmpty) {
+            setState(() {
+              _isLoading = true;
+            });
+            PhoneAuthCredential credential = PhoneAuthProvider.credential(
+              verificationId: verificationId,
+              smsCode: otp,
+            );
+            await _signInWithPhoneCredential(credential, phone);
+          }
+        },
+        codeAutoRetrievalTimeout: (String verificationId) {},
+      );
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'An error occurred: $e';
+      });
+    }
+  }
+
+  Future<void> _signInWithPhoneCredential(AuthCredential credential, String phone) async {
+    try {
+      final userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
+      if (userCredential.user != null) {
+        final doc = await FirebaseFirestore.instance.collection('users').doc(userCredential.user!.uid).get();
+        if (!doc.exists) {
+          await FirebaseAuth.instance.signOut();
+          setState(() {
+            _errorMessage = 'No partner profile found for this phone number.';
+          });
+          return;
+        }
+        final userData = doc.data() as Map<String, dynamic>;
+        if (userData['status'] == 'pending') {
+          await FirebaseAuth.instance.signOut();
+          setState(() {
+            _errorMessage = 'Your account is pending admin approval.';
+          });
+          return;
+        }
+      }
+    } on FirebaseAuthException catch (e) {
+      setState(() {
+        _errorMessage = 'Phone Sign-In failed: ${e.message}';
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Phone Sign-In failed: $e';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     const primaryBlue = Color(0xFF00B4D8);
@@ -147,7 +343,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           radius: 32,
                           backgroundColor: Color(0x1F00B4D8),
                           child: Icon(
-                            Icons.local_shipping_outlined,
+                            Icons.storefront_outlined,
                             size: 36,
                             color: primaryBlue,
                           ),
@@ -155,7 +351,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 16),
                       const Text(
-                        'OceanKart Delivery',
+                        'OceanKart Partners',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 24,
@@ -166,7 +362,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Sign in to manage shops and delivery trips',
+                        'Sign in to access your partner account',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 14,
@@ -318,7 +514,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 16),
 
-                      // Navigate to RegistrationPage
                       TextButton(
                         onPressed: () {
                           Navigator.push(
@@ -338,6 +533,74 @@ class _LoginScreenState extends State<LoginScreen> {
                             fontSize: 14,
                           ),
                         ),
+                      ),
+                      const SizedBox(height: 16),
+                      
+                      Row(
+                        children: [
+                          Expanded(child: Divider(color: Colors.white.withOpacity(0.2))),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Text(
+                              'OR CONTINUE WITH',
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.5),
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          Expanded(child: Divider(color: Colors.white.withOpacity(0.2))),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _isLoading ? null : _signInWithGoogle,
+                              icon: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: const BoxDecoration(
+                                  color: Colors.white,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Text(
+                                  'G', 
+                                  style: TextStyle(
+                                    color: Colors.black, 
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  )
+                                ),
+                              ),
+                              label: const Text('Google', style: TextStyle(color: Colors.white)),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                side: BorderSide(color: Colors.white.withOpacity(0.2)),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _isLoading ? null : _signInWithPhone,
+                              icon: const Icon(Icons.phone_android, color: Colors.white, size: 20),
+                              label: const Text('Phone', style: TextStyle(color: Colors.white)),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                side: BorderSide(color: Colors.white.withOpacity(0.2)),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
