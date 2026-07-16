@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -207,9 +208,15 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
             : isPhone
                 ? TextInputType.phone
                 : TextInputType.text,
+        inputFormatters: isPhone ? [
+          FilteringTextInputFormatter.digitsOnly,
+          LengthLimitingTextInputFormatter(10),
+        ] : null,
         decoration: InputDecoration(
           labelText: label + (isRequired ? ' *' : ''),
           labelStyle: TextStyle(color: Colors.white.withOpacity(0.6)),
+          prefixText: isPhone ? '+91 ' : null,
+          prefixStyle: isPhone ? const TextStyle(color: Colors.white, fontSize: 16) : null,
           prefixIcon: Icon(icon, color: primaryBlue.withOpacity(0.8)),
           suffixIcon: isPassword
               ? IconButton(
@@ -250,7 +257,7 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
                 }
               }
               if (isPhone && value != null && value.trim().isNotEmpty) {
-                if (!RegExp(r'^[0-9]{10}$').hasMatch(value.trim())) {
+                if (!RegExp(r'^[6-9]\d{9}$').hasMatch(value.trim())) {
                   return 'Please enter a valid 10-digit mobile number';
                 }
               }
