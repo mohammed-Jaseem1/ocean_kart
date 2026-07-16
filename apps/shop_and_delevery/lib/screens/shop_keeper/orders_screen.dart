@@ -3,7 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class OrdersScreen extends StatefulWidget {
-  const OrdersScreen({super.key});
+  final bool isHistory;
+  const OrdersScreen({super.key, this.isHistory = false});
 
   @override
   State<OrdersScreen> createState() => _OrdersScreenState();
@@ -39,6 +40,21 @@ class _OrdersScreenState extends State<OrdersScreen> {
     return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year} $hour:$min';
   }
 
+  Widget _buildHeader(String title) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      color: Colors.white,
+      child: Text(
+        title,
+        style: TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.bold,
+          color: _navyBlue,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (currentUser == null) {
@@ -62,13 +78,32 @@ class _OrdersScreenState extends State<OrdersScreen> {
             builder: (context, snapshotBackup) {
               if (snapshotBackup.hasError) return Center(child: Text('Error loading orders: ${snapshotBackup.error}'));
               if (!snapshotBackup.hasData) return const Center(child: CircularProgressIndicator());
-              return _buildOrdersList(snapshotBackup.data!.docs);
+              return _buildFilteredList(snapshotBackup.data!.docs);
             }
           );
         }
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-        return _buildOrdersList(snapshot.data!.docs);
+        return _buildFilteredList(snapshot.data!.docs);
       },
+    );
+  }
+
+  Widget _buildFilteredList(List<DocumentSnapshot> docs) {
+    final filteredDocs = docs.where((doc) {
+      final status = (doc.data() as Map<String, dynamic>)['status'] ?? 'pending';
+      if (widget.isHistory) {
+        return status == 'completed' || status == 'delivered' || status == 'cancelled';
+      } else {
+        return status == 'pending' || status == 'ready_for_delivery' || status == 'out_for_delivery';
+      }
+    }).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildHeader(widget.isHistory ? 'Order History (${filteredDocs.length})' : 'New Orders (${filteredDocs.length})'),
+        Expanded(child: _buildOrdersList(filteredDocs)),
+      ],
     );
   }
 

@@ -16,6 +16,7 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
   final _nameController = TextEditingController();
   final _mobileController = TextEditingController();
   final _emailController = TextEditingController();
+  final _addressController = TextEditingController();
   final _passwordController = TextEditingController();
 
   bool _obscurePassword = true;
@@ -26,6 +27,7 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
     _nameController.dispose();
     _mobileController.dispose();
     _emailController.dispose();
+    _addressController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
@@ -38,12 +40,7 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
     });
 
     try {
-      // If email is empty, create a dummy email using the phone number
-      // so we can still use Firebase Auth's Email/Password provider.
       String loginEmail = _emailController.text.trim();
-      if (loginEmail.isEmpty) {
-        loginEmail = '${_mobileController.text.trim()}@oceankart.com';
-      }
 
       // Create user with Firebase Auth
       final UserCredential userCredential = await FirebaseAuth.instance
@@ -61,6 +58,7 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
         'name': _nameController.text.trim(),
         'mobileNumber': _mobileController.text.trim(),
         'email': _emailController.text.trim(), // The actual provided email (or empty)
+        'address': _addressController.text.trim(),
         'createdAt': FieldValue.serverTimestamp(),
         'status': 'active', // Customers are active immediately
       };
@@ -247,13 +245,13 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
                 return 'This field is required';
               }
               if (isEmail && value != null && value.trim().isNotEmpty) {
-                if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value.trim())) {
-                  return 'Please enter a valid email address';
+                if (!RegExp(r'^[a-zA-Z0-9._%+-]{3,}@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$').hasMatch(value.trim())) {
+                  return 'Please enter a valid email address (e.g., name@example.com)';
                 }
               }
               if (isPhone && value != null && value.trim().isNotEmpty) {
-                if (value.length < 10) {
-                  return 'Please enter a valid mobile number';
+                if (!RegExp(r'^[0-9]{10}$').hasMatch(value.trim())) {
+                  return 'Please enter a valid 10-digit mobile number';
                 }
               }
               return null;
@@ -341,10 +339,16 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
                       ),
                       _buildTextField(
                         controller: _emailController,
-                        label: 'Email Address (Optional)',
+                        label: 'Email Address',
                         icon: Icons.email_outlined,
-                        isRequired: false,
+                        isRequired: true,
                         isEmail: true,
+                      ),
+                      _buildTextField(
+                        controller: _addressController,
+                        label: 'Delivery Address',
+                        icon: Icons.location_on_outlined,
+                        isRequired: true,
                       ),
                       _buildTextField(
                         controller: _passwordController,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:image_picker/image_picker.dart';
 
 class RegistrationPage extends StatefulWidget {
   const RegistrationPage({super.key});
@@ -38,6 +39,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
   final _aadhaarNumberController = TextEditingController();
   String? _aadhaarCardFileName;
   String? _selfieFileName;
+  final ImagePicker _picker = ImagePicker();
 
   @override
   void dispose() {
@@ -56,18 +58,31 @@ class _RegistrationPageState extends State<RegistrationPage> {
     super.dispose();
   }
 
-  void _pickAadhaarCard() {
-    // Simulate file picking
-    setState(() {
-      _aadhaarCardFileName = 'aadhaar_card_front.jpg';
-    });
+  Future<void> _pickAadhaarCard() async {
+    try {
+      final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
+      if (image != null) {
+        setState(() {
+          _aadhaarCardFileName = image.name;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error picking Aadhaar: $e');
+    }
   }
 
-  void _pickSelfie() {
-    // Simulate file picking
-    setState(() {
-      _selfieFileName = 'selfie_photo.jpg';
-    });
+  Future<void> _pickSelfie() async {
+    try {
+      final XFile? image = await _picker.pickImage(source: ImageSource.camera, preferredCameraDevice: CameraDevice.front);
+      final XFile? finalImage = image ?? await _picker.pickImage(source: ImageSource.gallery);
+      if (finalImage != null) {
+        setState(() {
+          _selfieFileName = finalImage.name;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error picking Selfie: $e');
+    }
   }
 
   Future<void> _submit() async {
@@ -144,7 +159,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
                     ),
                     const SizedBox(height: 16),
                     const Text(
-                      'Registration Successful!',
+                      'Registration Submitted!',
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
@@ -153,7 +168,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Your account has been created successfully. You can now log in.',
+                      'Your registration request has been submitted. You will be able to log in once an Admin approves your account.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 14,
@@ -167,8 +182,8 @@ class _RegistrationPageState extends State<RegistrationPage> {
           },
         );
 
-        // Automatically close dialog and navigate back after 2 seconds
-        Future.delayed(const Duration(seconds: 2), () {
+        // Automatically close dialog and navigate back after 4 seconds
+        Future.delayed(const Duration(seconds: 4), () {
           if (mounted) {
             Navigator.of(context).pop(); // Close dialog
             Navigator.of(context).pop(); // Go back to login
@@ -290,7 +305,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
                 return 'Please enter $label';
               }
               if (isEmail && value != null && value.isNotEmpty) {
-                if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')
+                if (!RegExp(r'^[a-zA-Z0-9._%+-]{3,}@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
                     .hasMatch(value.trim())) {
                   return 'Please enter a valid email address';
                 }
@@ -309,7 +324,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
   Widget _buildFileUploadField({
     required String label,
     required String? fileName,
-    required VoidCallback onTap,
+    required Future<void> Function() onTap,
   }) {
     const primaryBlue = Color(0xFF00B4D8);
     const darkBackground = Color(0xFF0A1628);
@@ -328,10 +343,10 @@ class _RegistrationPageState extends State<RegistrationPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               InkWell(
-                onTap: () {
-                  onTap();
+                onTap: () async {
+                  await onTap();
                   // Validate immediately after picking
-                  Future.delayed(const Duration(milliseconds: 100), () => state.validate());
+                  state.validate();
                 },
                 borderRadius: BorderRadius.circular(12),
                 child: Container(
@@ -536,6 +551,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
                         controller: _emailController,
                         label: 'Email Address',
                         icon: Icons.email,
+                        isRequired: true,
                         isEmail: true,
                       ),
                       _buildTextField(

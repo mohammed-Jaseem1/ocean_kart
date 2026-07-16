@@ -8,7 +8,7 @@ import 'screens/delevery_partner/delivery_partner_dashboard.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   // Initialize Firebase using the provided web configuration
   await Firebase.initializeApp(
     options: const FirebaseOptions(
@@ -72,23 +72,77 @@ class AuthGate extends StatelessWidget {
         // If the user has active session, show the correct Dashboard based on role
         if (snapshot.hasData) {
           return FutureBuilder<DocumentSnapshot>(
-            future: FirebaseFirestore.instance.collection('users').doc(snapshot.data!.uid).get(const GetOptions(source: Source.server)),
+            future: FirebaseFirestore.instance
+                .collection('users')
+                .doc(snapshot.data!.uid)
+                .get(const GetOptions(source: Source.server)),
             builder: (context, userSnapshot) {
               if (userSnapshot.connectionState == ConnectionState.waiting) {
                 return const Scaffold(
                   backgroundColor: Color(0xFF0A1628),
                   body: Center(
                     child: CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00B4D8)),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        Color(0xFF00B4D8),
+                      ),
                     ),
                   ),
                 );
               }
-              
-              if (userSnapshot.hasData && userSnapshot.data!.exists) {
+
+              if (userSnapshot.hasError) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  FirebaseAuth.instance.signOut();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Your request was rejected.'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                });
+                return const Scaffold(
+                  backgroundColor: Color(0xFF0A1628),
+                  body: Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00B4D8)))),
+                );
+              }
+
+              if (userSnapshot.hasData) {
+                if (!userSnapshot.data!.exists) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    FirebaseAuth.instance.signOut();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Your request was rejected.'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  });
+                  return const Scaffold(
+                    backgroundColor: Color(0xFF0A1628),
+                    body: Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00B4D8)))),
+                  );
+                }
+
                 final userData = userSnapshot.data!.data() as Map<String, dynamic>?;
+
+                if (userData?['status'] == 'pending') {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    FirebaseAuth.instance.signOut();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Your account is pending admin approval.'),
+                        backgroundColor: Colors.orange,
+                      ),
+                    );
+                  });
+                  return const Scaffold(
+                    backgroundColor: Color(0xFF0A1628),
+                    body: Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00B4D8)))),
+                  );
+                }
+
                 final role = userData?['role'];
-                
+
                 if (role == 'Delivery Boy') {
                   return const DeliveryPartnerDashboard();
                 } else if (role == 'Shopkeeper') {
@@ -99,7 +153,9 @@ class AuthGate extends StatelessWidget {
                     FirebaseAuth.instance.signOut();
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text('Access Denied. Only Shopkeepers and Delivery Boys can log into this app.'),
+                        content: Text(
+                          'Access Denied. Only Shopkeepers and Delivery Boys can log into this app.',
+                        ),
                         backgroundColor: Colors.red,
                       ),
                     );
@@ -108,19 +164,23 @@ class AuthGate extends StatelessWidget {
                     backgroundColor: Color(0xFF0A1628),
                     body: Center(
                       child: CircularProgressIndicator(
-                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00B4D8)),
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Color(0xFF00B4D8),
+                        ),
                       ),
                     ),
                   );
                 }
               }
-              
+
               // Fallback to loading while document doesn't exist
               return const Scaffold(
                 backgroundColor: Color(0xFF0A1628),
                 body: Center(
                   child: CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00B4D8)),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      Color(0xFF00B4D8),
+                    ),
                   ),
                 ),
               );

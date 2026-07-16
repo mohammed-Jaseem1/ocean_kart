@@ -96,7 +96,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final List<Widget> _pages = [
       _buildDashboardContent(context, navyBlue, lightBlue),
       const InventoryHomeScreen(),
-      const OrdersScreen(),
+      const OrdersScreen(isHistory: false),
+      const OrdersScreen(isHistory: true),
     ];
 
     return Scaffold(
@@ -155,7 +156,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
           BottomNavigationBarItem(
             icon: Icon(Icons.receipt_long_outlined),
             activeIcon: Icon(Icons.receipt_long),
-            label: 'Orders',
+            label: 'New Orders',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.history_outlined),
+            activeIcon: Icon(Icons.history),
+            label: 'History',
           ),
         ],
       ),

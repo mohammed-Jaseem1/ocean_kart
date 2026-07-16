@@ -70,18 +70,23 @@ class AuthGate extends StatelessWidget {
         if (snapshot.hasData) {
           final user = snapshot.data!;
           return StreamBuilder<DocumentSnapshot>(
-            stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
+            stream: FirebaseFirestore.instance
+                .collection('users')
+                .doc(user.uid)
+                .snapshots(),
             builder: (context, docSnapshot) {
               if (docSnapshot.connectionState == ConnectionState.waiting) {
                 return const Scaffold(
                   body: Center(
                     child: CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00B4D8)),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        Color(0xFF00B4D8),
+                      ),
                     ),
                   ),
                 );
               }
-              
+
               if (docSnapshot.hasData && docSnapshot.data!.exists) {
                 final data = docSnapshot.data!.data() as Map<String, dynamic>?;
                 if (data != null && data['role'] != 'customer') {
@@ -90,7 +95,9 @@ class AuthGate extends StatelessWidget {
                     FirebaseAuth.instance.signOut();
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text('Access Denied. Only customers can log into this app.'),
+                        content: Text(
+                          'Access Denied. Only customers can log into this app.',
+                        ),
                         backgroundColor: Colors.red,
                       ),
                     );
@@ -98,7 +105,9 @@ class AuthGate extends StatelessWidget {
                   return const Scaffold(
                     body: Center(
                       child: CircularProgressIndicator(
-                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00B4D8)),
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Color(0xFF00B4D8),
+                        ),
                       ),
                     ),
                   );
@@ -106,12 +115,14 @@ class AuthGate extends StatelessWidget {
                   return const DashboardScreen();
                 }
               }
-              
+
               // Waiting for login screen to create the document
               return const Scaffold(
                 body: Center(
                   child: CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00B4D8)),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      Color(0xFF00B4D8),
+                    ),
                   ),
                 ),
               );

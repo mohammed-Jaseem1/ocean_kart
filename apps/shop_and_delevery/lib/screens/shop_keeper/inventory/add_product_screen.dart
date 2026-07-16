@@ -28,6 +28,9 @@ class _AddProductScreenState extends State<AddProductScreen> {
   final _malayalamNameController = TextEditingController();
   final _priceController = TextEditingController();
   final _quantityController = TextEditingController();
+  final _offerPriceController = TextEditingController();
+
+  bool _isOffer = false;
   
   String _selectedCategory = 'Sea Water Fish';
   final List<String> _categories = [
@@ -53,6 +56,11 @@ class _AddProductScreenState extends State<AddProductScreen> {
       _imageUrl = widget.productData!['imageUrl'];
       _priceController.text = widget.productData!['pricePerKg']?.toString() ?? '';
       _quantityController.text = widget.productData!['stockQuantity']?.toString() ?? '';
+      
+      if (widget.productData!['isOffer'] == true) {
+        _isOffer = true;
+        _offerPriceController.text = widget.productData!['offerPrice']?.toString() ?? '';
+      }
     }
   }
 
@@ -62,6 +70,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
     _malayalamNameController.dispose();
     _priceController.dispose();
     _quantityController.dispose();
+    _offerPriceController.dispose();
     super.dispose();
   }
 
@@ -159,6 +168,8 @@ class _AddProductScreenState extends State<AddProductScreen> {
         'imageUrl': _imageUrl,
         'pricePerKg': double.tryParse(_priceController.text.trim()) ?? 0.0,
         'stockQuantity': double.tryParse(_quantityController.text.trim()) ?? 0.0,
+        'isOffer': _isOffer,
+        'offerPrice': _isOffer ? (double.tryParse(_offerPriceController.text.trim()) ?? 0.0) : 0.0,
       };
 
       if (widget.productId != null) {
@@ -402,6 +413,66 @@ class _AddProductScreenState extends State<AddProductScreen> {
                           });
                         }
                       },
+                    ),
+                    const SizedBox(height: 16),
+
+                    Card(
+                      elevation: 0,
+                      color: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(color: Colors.black.withOpacity(0.1)),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4.0),
+                        child: Column(
+                          children: [
+                            SwitchListTile(
+                              title: const Text(
+                                'Put on Offer',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                  color: Colors.black,
+                                ),
+                              ),
+                              value: _isOffer,
+                              activeColor: Colors.blueAccent,
+                              onChanged: (bool value) {
+                                setState(() {
+                                  _isOffer = value;
+                                });
+                              },
+                            ),
+                            if (_isOffer) ...[
+                              const Divider(height: 1),
+                              Padding(
+                                padding: const EdgeInsets.all(16.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    buildLabel('OFFER PRICE (₹ PER KG) *'),
+                                    TextFormField(
+                                      controller: _offerPriceController,
+                                      style: const TextStyle(color: Colors.black),
+                                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                      decoration: inputDecoration.copyWith(
+                                        hintText: 'e.g. 199',
+                                        fillColor: cardColor,
+                                      ),
+                                      validator: (value) {
+                                        if (!_isOffer) return null;
+                                        if (value == null || value.isEmpty) return 'Required when offer is active';
+                                        return null;
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 16),
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 
 const UserApprovals = () => {
@@ -44,6 +44,17 @@ const UserApprovals = () => {
     } catch (err) {
       console.error("Error approving user: ", err);
       alert("Failed to approve user. Please try again.");
+    }
+  };
+
+  const handleReject = async (userId) => {
+    if (!window.confirm("Are you sure you want to reject this request?")) return;
+    try {
+      await deleteDoc(doc(db, 'users', userId));
+      setUsers(users.filter(u => u.id !== userId));
+    } catch (err) {
+      console.error("Error rejecting user: ", err);
+      alert("Failed to reject user.");
     }
   };
 
@@ -124,29 +135,54 @@ const UserApprovals = () => {
                     </td>
                     <td>{date}</td>
                     <td>
-                      <button
-                        onClick={() => handleApprove(user.id)}
-                        style={{
-                          background: 'rgba(46, 213, 115, 0.15)',
-                          color: '#2ed573',
-                          border: '1px solid rgba(46, 213, 115, 0.2)',
-                          padding: '8px 16px',
-                          borderRadius: '8px',
-                          fontWeight: '600',
-                          cursor: 'pointer',
-                          transition: 'all 0.2s'
-                        }}
-                        onMouseOver={(e) => {
-                          e.currentTarget.style.background = '#2ed573';
-                          e.currentTarget.style.color = '#fff';
-                        }}
-                        onMouseOut={(e) => {
-                          e.currentTarget.style.background = 'rgba(46, 213, 115, 0.15)';
-                          e.currentTarget.style.color = '#2ed573';
-                        }}
-                      >
-                        Approve
-                      </button>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                          onClick={() => handleApprove(user.id)}
+                          style={{
+                            background: 'rgba(46, 213, 115, 0.15)',
+                            color: '#2ed573',
+                            border: '1px solid rgba(46, 213, 115, 0.2)',
+                            padding: '8px 16px',
+                            borderRadius: '8px',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s'
+                          }}
+                          onMouseOver={(e) => {
+                            e.currentTarget.style.background = '#2ed573';
+                            e.currentTarget.style.color = '#fff';
+                          }}
+                          onMouseOut={(e) => {
+                            e.currentTarget.style.background = 'rgba(46, 213, 115, 0.15)';
+                            e.currentTarget.style.color = '#2ed573';
+                          }}
+                        >
+                          Approve
+                        </button>
+                        <button
+                          onClick={() => handleReject(user.id)}
+                          style={{
+                            background: 'rgba(255, 71, 87, 0.15)',
+                            color: '#ff4757',
+                            border: '1px solid rgba(255, 71, 87, 0.2)',
+                            padding: '8px 16px',
+                            borderRadius: '8px',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s'
+                          }}
+                          onMouseOver={(e) => {
+                            e.currentTarget.style.background = '#ff4757';
+                            e.currentTarget.style.color = '#fff';
+                          }}
+                          onMouseOut={(e) => {
+                            e.currentTarget.style.background = 'rgba(255, 71, 87, 0.15)';
+                            e.currentTarget.style.color = '#ff4757';
+                          }}
+                        >
+                          Reject
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );

@@ -144,10 +144,27 @@ class _DeliveryPartnerDashboardState extends State<DeliveryPartnerDashboard> {
       builder: (context, snapshot) {
         int totalDeliveries = 0;
         double totalEarnings = 0.0;
+        double totalOrderValue = 0.0;
+        double todayEarnings = 0.0;
 
         if (snapshot.hasData) {
+          final now = DateTime.now();
+          final startOfDay = DateTime(now.year, now.month, now.day);
+
           totalDeliveries = snapshot.data!.docs.length;
           totalEarnings = totalDeliveries * 40.0; // Assume ₹40 per delivery
+
+          for (var doc in snapshot.data!.docs) {
+            final data = doc.data() as Map<String, dynamic>;
+            totalOrderValue += (data['totalAmount'] as num?)?.toDouble() ?? 0.0;
+            
+            if (data['createdAt'] != null && data['createdAt'] is Timestamp) {
+               final date = (data['createdAt'] as Timestamp).toDate();
+               if (date.isAfter(startOfDay) || date.isAtSameMomentAs(startOfDay)) {
+                 todayEarnings += 40.0;
+               }
+            }
+          }
         }
 
         return Container(
@@ -168,23 +185,61 @@ class _DeliveryPartnerDashboardState extends State<DeliveryPartnerDashboard> {
               ),
             ],
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              _buildStatItem(
-                'Total Deliveries',
-                totalDeliveries.toString(),
-                Icons.check_circle_outline,
+              Text(
+                "Performance Overview",
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.9),
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5,
+                ),
               ),
-              Container(
-                width: 1,
-                height: 50,
-                color: Colors.white.withOpacity(0.2),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _buildStatItem(
+                    'Today\'s Income',
+                    '₹${todayEarnings.toStringAsFixed(0)}',
+                    Icons.payments_outlined,
+                  ),
+                  Container(
+                    width: 1,
+                    height: 50,
+                    color: Colors.white.withOpacity(0.2),
+                  ),
+                  _buildStatItem(
+                    'Total Earnings',
+                    '₹${totalEarnings.toStringAsFixed(0)}',
+                    Icons.account_balance_wallet_outlined,
+                  ),
+                ],
               ),
-              _buildStatItem(
-                'Total Earnings',
-                '₹${totalEarnings.toStringAsFixed(0)}',
-                Icons.account_balance_wallet_outlined,
+              const SizedBox(height: 16),
+              const Divider(color: Colors.white24, height: 1),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _buildStatItem(
+                    'Total Deliveries',
+                    totalDeliveries.toString(),
+                    Icons.check_circle_outline,
+                  ),
+                  Container(
+                    width: 1,
+                    height: 50,
+                    color: Colors.white.withOpacity(0.2),
+                  ),
+                  _buildStatItem(
+                    'Total Value',
+                    '₹${totalOrderValue.toStringAsFixed(0)}',
+                    Icons.shopping_bag_outlined,
+                  ),
+                ],
               ),
             ],
           ),
@@ -196,22 +251,22 @@ class _DeliveryPartnerDashboardState extends State<DeliveryPartnerDashboard> {
   Widget _buildStatItem(String label, String value, IconData icon) {
     return Column(
       children: [
-        Icon(icon, color: Colors.white, size: 32),
-        const SizedBox(height: 8),
+        Icon(icon, color: Colors.white, size: 28),
+        const SizedBox(height: 6),
         Text(
           value,
           style: const TextStyle(
             color: Colors.white,
-            fontSize: 24,
+            fontSize: 20,
             fontWeight: FontWeight.bold,
           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 2),
         Text(
           label,
           style: TextStyle(
             color: Colors.white.withOpacity(0.8),
-            fontSize: 14,
+            fontSize: 12,
             fontWeight: FontWeight.w500,
           ),
         ),

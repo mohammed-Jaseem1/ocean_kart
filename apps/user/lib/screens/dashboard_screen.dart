@@ -29,9 +29,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     {'name': 'Fish', 'icon': Icons.set_meal},
     {'name': 'Prawns', 'icon': Icons.water},
     {'name': 'Crab', 'icon': Icons.bug_report},
-    {'name': 'Meat', 'icon': Icons.kebab_dining},
     {'name': 'Offers', 'icon': Icons.local_offer},
-    {'name': 'Healthy', 'icon': Icons.favorite},
   ];
 
   Future<void> _handleLogout() async {
@@ -44,7 +42,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     final data = doc.data() as Map<String, dynamic>;
     final productId = doc.id;
-    final price = (data['pricePerKg'] as num?)?.toDouble() ?? 0.0;
+    final bool isOffer = data['isOffer'] == true;
+    final double offerPrice = (data['offerPrice'] as num?)?.toDouble() ?? 0.0;
+    final price = isOffer ? offerPrice : ((data['pricePerKg'] as num?)?.toDouble() ?? 0.0);
 
     try {
       final cartRef = FirebaseFirestore.instance
@@ -177,23 +177,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
             }
 
             if (_selectedCategory.isNotEmpty) {
-              final query = _selectedCategory.toLowerCase();
-              final singularQuery = query.endsWith('s')
-                  ? query.substring(0, query.length - 1)
-                  : query;
+              if (_selectedCategory == 'Offers') {
+                docs = docs.where((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  return data['isOffer'] == true;
+                }).toList();
+              } else {
+                final query = _selectedCategory.toLowerCase();
+                final singularQuery = query.endsWith('s')
+                    ? query.substring(0, query.length - 1)
+                    : query;
 
-              docs = docs.where((doc) {
-                final data = doc.data() as Map<String, dynamic>;
-                final cat = (data['category'] ?? '').toString().toLowerCase();
-                final name = (data['name'] ?? '').toString().toLowerCase();
+                docs = docs.where((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final cat = (data['category'] ?? '').toString().toLowerCase();
+                  final name = (data['name'] ?? '').toString().toLowerCase();
 
-                if (cat.contains(query) || cat.contains(singularQuery))
-                  return true;
-                if (name.contains(query) || name.contains(singularQuery))
-                  return true;
+                  if (cat.contains(query) || cat.contains(singularQuery))
+                    return true;
+                  if (name.contains(query) || name.contains(singularQuery))
+                    return true;
 
-                return false;
-              }).toList();
+                  return false;
+                }).toList();
+              }
             }
 
             if (_selectedShopId.isNotEmpty) {
@@ -889,6 +896,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         : name;
     final String? imageUrl = data['imageUrl'];
     final double price = (data['pricePerKg'] as num?)?.toDouble() ?? 0.0;
+    final bool isOffer = data['isOffer'] == true;
+    final double offerPrice = (data['offerPrice'] as num?)?.toDouble() ?? 0.0;
     final double stockQuantity =
         (data['stockQuantity'] as num?)?.toDouble() ?? 0.0;
     final bool isOutOfStock = stockQuantity <= 0;
@@ -912,18 +921,52 @@ class _DashboardScreenState extends State<DashboardScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(
-            child: Container(
-              color: _navyBlue,
-              child: imageUrl != null && imageUrl.isNotEmpty
-                  ? (imageUrl.startsWith('http')
-                        ? Image.network(imageUrl, fit: BoxFit.cover)
-                        : Image.memory(
-                            const Base64Decoder().convert(imageUrl),
-                            fit: BoxFit.cover,
-                          ))
-                  : const Center(
-                      child: Icon(Icons.image, color: Colors.black12, size: 32),
+            child: Stack(
+              children: [
+                Container(
+                  color: _navyBlue,
+                  width: double.infinity,
+                  height: double.infinity,
+                  child: imageUrl != null && imageUrl.isNotEmpty
+                      ? (imageUrl.startsWith('http')
+                            ? Image.network(imageUrl, fit: BoxFit.cover)
+                            : Image.memory(
+                                const Base64Decoder().convert(imageUrl),
+                                fit: BoxFit.cover,
+                              ))
+                      : const Center(
+                          child: Icon(Icons.image, color: Colors.black12, size: 32),
+                        ),
+                ),
+                if (isOffer)
+                  Positioned(
+                    top: 8,
+                    left: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.redAccent,
+                        borderRadius: BorderRadius.circular(6),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.redAccent.withOpacity(0.4),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: const Text(
+                        'OFFER',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
                     ),
+                  ),
+              ],
             ),
           ),
           Padding(
@@ -946,14 +989,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      '₹$price / kg',
-                      style: TextStyle(
-                        color: _lightBlue,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 13,
+                    if (isOffer)
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '₹$price / kg',
+                            style: const TextStyle(
+                              color: Colors.grey,
+                              decoration: TextDecoration.lineThrough,
+                              fontSize: 10,
+                            ),
+                          ),
+                          Text(
+                            '₹$offerPrice / kg',
+                            style: const TextStyle(
+                              color: Colors.redAccent,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      )
+                    else
+                      Text(
+                        '₹$price / kg',
+                        style: TextStyle(
+                          color: _lightBlue,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 13,
+                        ),
                       ),
-                    ),
                     if (isOutOfStock)
                       const Text(
                         'Out of Stock',

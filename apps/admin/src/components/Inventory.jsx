@@ -7,11 +7,7 @@ const Inventory = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState({ stockQuantity: '', pricePerKg: '' });
-  
-  const [shopsList, setShopsList] = useState([]);
-  const [isAddOpen, setIsAddOpen] = useState(false);
-  const [newProduct, setNewProduct] = useState({ shopId: '', name: '', category: 'General', pricePerKg: '', stockQuantity: '' });
+  const [editForm, setEditForm] = useState({ stockAction: 'add', stockAmount: '', pricePerKg: '' });
 
   useEffect(() => {
     fetchAllInventory();
@@ -24,24 +20,21 @@ const Inventory = () => {
       const usersQuery = query(collection(db, 'users'), where('role', '==', 'Shopkeeper'));
       const usersSnapshot = await getDocs(usersQuery);
       const shops = {};
-      const fetchedShops = [];
       usersSnapshot.forEach(doc => {
         const shopName = doc.data().shopName || doc.data().name || 'Unknown Shop';
         shops[doc.id] = shopName;
-        fetchedShops.push({ id: doc.id, name: shopName });
       });
-      setShopsList(fetchedShops);
 
       // Now fetch all products using collectionGroup
       const productsSnapshot = await getDocs(collectionGroup(db, 'products'));
       const fetchedProducts = [];
-      
+
       productsSnapshot.forEach(doc => {
         const data = doc.data();
         const ref = doc.ref;
         // The parent of the products collection is the user document
         const shopId = ref.parent.parent?.id;
-        
+
         fetchedProducts.push({
           id: doc.id,
           shopId: shopId,
@@ -49,7 +42,7 @@ const Inventory = () => {
           ...data
         });
       });
-      
+
       setProducts(fetchedProducts);
       setError(null);
     } catch (err) {
@@ -63,33 +56,45 @@ const Inventory = () => {
   const handleEditClick = (product) => {
     setEditingId(product.id);
     setEditForm({
-      stockQuantity: product.stockQuantity?.toString() || '0',
+      stockAction: 'add',
+      stockAmount: '',
       pricePerKg: product.pricePerKg?.toString() || '0'
     });
   };
 
   const handleCancelEdit = () => {
     setEditingId(null);
-    setEditForm({ stockQuantity: '', pricePerKg: '' });
+    setEditForm({ stockAction: 'add', stockAmount: '', pricePerKg: '' });
   };
 
   const handleSaveEdit = async (product) => {
     try {
       const productRef = doc(db, 'users', product.shopId, 'products', product.id);
-      
-      const newStock = parseInt(editForm.stockQuantity, 10);
+
+      let newStock = product.stockQuantity || 0;
+      const amount = parseInt(editForm.stockAmount, 10);
+
+      if (!isNaN(amount) && amount > 0) {
+        if (editForm.stockAction === 'add') {
+          newStock += amount;
+        } else if (editForm.stockAction === 'reduce') {
+          newStock -= amount;
+          if (newStock < 0) newStock = 0;
+        }
+      }
+
       const newPrice = parseFloat(editForm.pricePerKg);
-      
-      if (isNaN(newStock) || isNaN(newPrice)) {
-        alert("Please enter valid numbers for stock and price");
+
+      if (isNaN(newPrice)) {
+        alert("Please enter a valid number for price");
         return;
       }
-      
+
       await updateDoc(productRef, {
         stockQuantity: newStock,
         pricePerKg: newPrice
       });
-      
+
       // Update local state
       setProducts(products.map(p => {
         if (p.id === product.id) {
@@ -97,7 +102,7 @@ const Inventory = () => {
         }
         return p;
       }));
-      
+
       setEditingId(null);
     } catch (err) {
       console.error("Error updating product: ", err);
@@ -114,43 +119,6 @@ const Inventory = () => {
     } catch (err) {
       console.error("Error deleting product: ", err);
       alert("Failed to delete product.");
-    }
-  };
-
-  const handleAddProduct = async () => {
-    if (!newProduct.shopId || !newProduct.name || !newProduct.pricePerKg || !newProduct.stockQuantity) {
-      alert("Please fill in all required fields.");
-      return;
-    }
-    
-    try {
-      const productsRef = collection(db, 'users', newProduct.shopId, 'products');
-      const docRef = await addDoc(productsRef, {
-        shopId: newProduct.shopId,
-        name: newProduct.name,
-        category: newProduct.category,
-        pricePerKg: parseFloat(newProduct.pricePerKg),
-        stockQuantity: parseInt(newProduct.stockQuantity, 10),
-        status: 'active',
-        createdAt: new Date(),
-      });
-      
-      const shopName = shopsList.find(s => s.id === newProduct.shopId)?.name || 'Unknown Shop';
-      setProducts([{
-        id: docRef.id,
-        shopId: newProduct.shopId,
-        shopName: shopName,
-        name: newProduct.name,
-        category: newProduct.category,
-        pricePerKg: parseFloat(newProduct.pricePerKg),
-        stockQuantity: parseInt(newProduct.stockQuantity, 10),
-      }, ...products]);
-      
-      setIsAddOpen(false);
-      setNewProduct({ shopId: '', name: '', category: 'General', pricePerKg: '', stockQuantity: '' });
-    } catch (err) {
-      console.error("Error adding product: ", err);
-      alert("Failed to add product.");
     }
   };
 
@@ -171,20 +139,6 @@ const Inventory = () => {
             Total Products: {products.length}
           </div>
         </div>
-        <button 
-          onClick={() => setIsAddOpen(true)}
-          style={{
-            background: '#00b4d8',
-            color: '#fff',
-            border: 'none',
-            padding: '8px 16px',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            fontWeight: '600'
-          }}
-        >
-          + Add Product
-        </button>
       </div>
 
       {error && (
@@ -214,19 +168,19 @@ const Inventory = () => {
             <tbody>
               {products.map((product) => {
                 const isEditing = editingId === product.id;
-                
+
                 let stockStatus = 'In Stock';
                 let statusColor = 'rgba(46, 213, 115, 0.1)';
                 let statusTextColor = '#2ed573';
-                
+
                 if (product.stockQuantity == null || product.stockQuantity <= 0) {
-                    stockStatus = 'Out of Stock';
-                    statusColor = 'rgba(255, 71, 87, 0.1)';
-                    statusTextColor = '#ff4757';
+                  stockStatus = 'Out of Stock';
+                  statusColor = 'rgba(255, 71, 87, 0.1)';
+                  statusTextColor = '#ff4757';
                 } else if (product.stockQuantity < 10) {
-                    stockStatus = 'Low Stock';
-                    statusColor = 'rgba(255, 165, 2, 0.1)';
-                    statusTextColor = '#ffa502';
+                  stockStatus = 'Low Stock';
+                  statusColor = 'rgba(255, 165, 2, 0.1)';
+                  statusTextColor = '#ffa502';
                 }
 
                 return (
@@ -246,18 +200,18 @@ const Inventory = () => {
                       <span style={{ fontWeight: '500', color: '#00b4d8' }}>{product.shopName}</span>
                     </td>
                     <td>{product.category || 'General'}</td>
-                    
+
                     {/* Price Column */}
                     <td>
                       {isEditing ? (
-                        <input 
+                        <input
                           type="number"
                           value={editForm.pricePerKg}
-                          onChange={(e) => setEditForm({...editForm, pricePerKg: e.target.value})}
+                          onChange={(e) => setEditForm({ ...editForm, pricePerKg: e.target.value })}
                           style={{
                             width: '80px',
-                            background: 'rgba(255,255,255,0.05)',
-                            border: '1px solid rgba(255,255,255,0.1)',
+                            background: '#334155',
+                            border: '1px solid #475569',
                             color: '#fff',
                             padding: '4px 8px',
                             borderRadius: '4px'
@@ -267,28 +221,12 @@ const Inventory = () => {
                         <span style={{ fontWeight: '600' }}>{product.pricePerKg}</span>
                       )}
                     </td>
-                    
+
                     {/* Stock Column */}
                     <td>
-                      {isEditing ? (
-                        <input 
-                          type="number"
-                          value={editForm.stockQuantity}
-                          onChange={(e) => setEditForm({...editForm, stockQuantity: e.target.value})}
-                          style={{
-                            width: '80px',
-                            background: 'rgba(255,255,255,0.05)',
-                            border: '1px solid rgba(255,255,255,0.1)',
-                            color: '#fff',
-                            padding: '4px 8px',
-                            borderRadius: '4px'
-                          }}
-                        />
-                      ) : (
-                        <span>{product.stockQuantity || 0}</span>
-                      )}
+                      <span>{product.stockQuantity || 0}</span>
                     </td>
-                    
+
                     <td>
                       <span style={{
                         padding: '4px 8px',
@@ -302,10 +240,40 @@ const Inventory = () => {
                         {stockStatus}
                       </span>
                     </td>
-                    
+
                     <td>
                       {isEditing ? (
-                        <div style={{ display: 'flex', gap: '8px' }}>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <select
+                            value={editForm.stockAction}
+                            onChange={(e) => setEditForm({...editForm, stockAction: e.target.value})}
+                            style={{
+                              background: '#334155',
+                              border: '1px solid #475569',
+                              color: '#fff',
+                              padding: '4px',
+                              borderRadius: '4px',
+                              fontSize: '12px'
+                            }}
+                          >
+                            <option value="add" style={{ color: '#000' }}>Add</option>
+                            <option value="reduce" style={{ color: '#000' }}>Reduce</option>
+                          </select>
+                          <input 
+                            type="number"
+                            placeholder="Qty"
+                            value={editForm.stockAmount}
+                            onChange={(e) => setEditForm({...editForm, stockAmount: e.target.value})}
+                            style={{
+                              width: '60px',
+                              background: '#334155',
+                              border: '1px solid #475569',
+                              color: '#fff',
+                              padding: '4px 8px',
+                              borderRadius: '4px',
+                              fontSize: '12px'
+                            }}
+                          />
                           <button
                             onClick={() => handleSaveEdit(product)}
                             style={{
@@ -349,7 +317,7 @@ const Inventory = () => {
                               transition: 'all 0.2s'
                             }}
                           >
-                            Edit
+                            Update
                           </button>
                           <button
                             onClick={() => handleDelete(product)}
@@ -374,78 +342,6 @@ const Inventory = () => {
               })}
             </tbody>
           </table>
-        </div>
-      )}
-
-      {/* Add Product Modal */}
-      {isAddOpen && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
-        }}>
-          <div style={{ background: '#0a1628', padding: '24px', borderRadius: '16px', width: '400px', border: '1px solid rgba(255,255,255,0.1)' }}>
-            <h3 style={{ marginTop: 0, color: '#fff' }}>Add New Product</h3>
-            
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', marginBottom: '8px', fontSize: '12px', color: 'rgba(255,255,255,0.7)' }}>SELECT SHOP</label>
-              <select 
-                value={newProduct.shopId} 
-                onChange={(e) => setNewProduct({...newProduct, shopId: e.target.value})}
-                style={{ width: '100%', padding: '10px', borderRadius: '8px', background: 'rgba(255,255,255,0.05)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' }}
-              >
-                <option value="" style={{ color: '#000' }}>Select a shop</option>
-                {shopsList.map(shop => (
-                  <option key={shop.id} value={shop.id} style={{ color: '#000' }}>{shop.name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', marginBottom: '8px', fontSize: '12px', color: 'rgba(255,255,255,0.7)' }}>PRODUCT NAME</label>
-              <input 
-                type="text" 
-                value={newProduct.name}
-                onChange={(e) => setNewProduct({...newProduct, name: e.target.value})}
-                style={{ width: '100%', padding: '10px', borderRadius: '8px', background: 'rgba(255,255,255,0.05)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' }}
-              />
-            </div>
-
-            <div style={{ display: 'flex', gap: '16px', marginBottom: '24px' }}>
-              <div style={{ flex: 1 }}>
-                <label style={{ display: 'block', marginBottom: '8px', fontSize: '12px', color: 'rgba(255,255,255,0.7)' }}>PRICE (₹)</label>
-                <input 
-                  type="number" 
-                  value={newProduct.pricePerKg}
-                  onChange={(e) => setNewProduct({...newProduct, pricePerKg: e.target.value})}
-                  style={{ width: '100%', padding: '10px', borderRadius: '8px', background: 'rgba(255,255,255,0.05)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' }}
-                />
-              </div>
-              <div style={{ flex: 1 }}>
-                <label style={{ display: 'block', marginBottom: '8px', fontSize: '12px', color: 'rgba(255,255,255,0.7)' }}>STOCK (KG)</label>
-                <input 
-                  type="number" 
-                  value={newProduct.stockQuantity}
-                  onChange={(e) => setNewProduct({...newProduct, stockQuantity: e.target.value})}
-                  style={{ width: '100%', padding: '10px', borderRadius: '8px', background: 'rgba(255,255,255,0.05)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' }}
-                />
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-              <button 
-                onClick={() => setIsAddOpen(false)}
-                style={{ padding: '10px 16px', borderRadius: '8px', background: 'transparent', color: '#fff', border: 'none', cursor: 'pointer' }}
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={handleAddProduct}
-                style={{ padding: '10px 16px', borderRadius: '8px', background: '#00b4d8', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}
-              >
-                Add Product
-              </button>
-            </div>
-          </div>
         </div>
       )}
     </section>

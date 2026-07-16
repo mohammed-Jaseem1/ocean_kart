@@ -268,15 +268,49 @@ class _LoginScreenState extends State<LoginScreen> {
     const cardColor = Color(0xFF132238);
 
     return Scaffold(
-      backgroundColor: darkBackground,
+      backgroundColor: primaryBlue,
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24.0),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 400),
-            child: Card(
-              color: cardColor,
-              elevation: 8,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.2),
+                        blurRadius: 20,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  child: ClipOval(
+                    child: Image.asset(
+                      'assets/splash.png',
+                      height: 140,
+                      width: 140,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return const Padding(
+                          padding: EdgeInsets.all(30.0),
+                          child: Icon(
+                            Icons.person_outline_rounded,
+                            size: 80,
+                            color: Colors.white,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 32),
+                Card(
+                  color: cardColor,
+                  elevation: 8,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
                 side: BorderSide(
@@ -295,18 +329,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const Center(
-                        child: CircleAvatar(
-                          radius: 32,
-                          backgroundColor: Color(0x1F00B4D8),
-                          child: Icon(
-                            Icons.person_outline_rounded,
-                            size: 36,
-                            color: primaryBlue,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
                       const Text(
                         'OceanKart Users',
                         textAlign: TextAlign.center,
@@ -564,9 +586,11 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
             ),
-          ),
+          ],
         ),
       ),
-    );
+    ),
+  ),
+);
   }
 }
