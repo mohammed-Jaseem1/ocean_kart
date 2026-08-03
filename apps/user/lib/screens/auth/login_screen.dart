@@ -184,7 +184,7 @@ class _LoginScreenState extends State<LoginScreen> {
       await FirebaseAuth.instance.verifyPhoneNumber(
         phoneNumber: phone,
         verificationCompleted: (PhoneAuthCredential credential) async {
-          await _signInWithPhoneCredential(credential, phone);
+          await _signInWithPhoneCredential(credential);
         },
         verificationFailed: (FirebaseAuthException e) {
           setState(() {
@@ -236,7 +236,7 @@ class _LoginScreenState extends State<LoginScreen> {
               verificationId: verificationId,
               smsCode: otp,
             );
-            await _signInWithPhoneCredential(credential, phone);
+            await _signInWithPhoneCredential(credential);
           }
         },
         codeAutoRetrievalTimeout: (String verificationId) {},
@@ -249,20 +249,17 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Future<void> _signInWithPhoneCredential(AuthCredential credential, String phone) async {
+  Future<void> _signInWithPhoneCredential(AuthCredential credential) async {
     try {
       final userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
       if (userCredential.user != null) {
         final doc = await FirebaseFirestore.instance.collection('users').doc(userCredential.user!.uid).get();
         if (!doc.exists) {
-          await FirebaseFirestore.instance.collection('users').doc(userCredential.user!.uid).set({
-            'uid': userCredential.user!.uid,
-            'phone': phone,
-            'name': 'Phone User',
-            'role': 'customer',
-            'createdAt': FieldValue.serverTimestamp(),
-            'status': 'active',
+          await FirebaseAuth.instance.signOut();
+          setState(() {
+            _errorMessage = 'No account found for this number. Please register first.';
           });
+          return;
         }
       }
     } on FirebaseAuthException catch (e) {

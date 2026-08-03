@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:google_sign_in/google_sign_in.dart';
 import 'registration_page.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -19,7 +17,6 @@ class _LoginScreenState extends State<LoginScreen> {
   
   bool _isLoading = false;
   bool _obscurePassword = true;
-  bool _googleInitialized = false;
   String? _errorMessage;
 
   @override
@@ -108,75 +105,6 @@ class _LoginScreenState extends State<LoginScreen> {
         });
       }
     }
-  }
-
-  Future<void> _signInWithGoogle() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-
-    try {
-      final UserCredential userCredential = await _googleSignIn();
-
-      if (userCredential.user != null) {
-        final doc = await FirebaseFirestore.instance.collection('users').doc(userCredential.user!.uid).get();
-        if (!doc.exists) {
-          await FirebaseAuth.instance.signOut();
-          setState(() {
-            _errorMessage = 'Your request was rejected.';
-          });
-          return;
-        }
-        final userData = doc.data() as Map<String, dynamic>;
-        if (userData['status'] == 'pending') {
-          await FirebaseAuth.instance.signOut();
-          setState(() {
-            _errorMessage = 'Your account is pending admin approval.';
-          });
-          return;
-        }
-      }
-    } catch (e) {
-      setState(() {
-        _errorMessage = 'Google Sign-In failed: $e';
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  Future<UserCredential> _googleSignIn() async {
-    if (kIsWeb) {
-      final GoogleAuthProvider googleProvider = GoogleAuthProvider();
-      return FirebaseAuth.instance.signInWithPopup(googleProvider);
-    }
-
-    if (!_googleInitialized) {
-      await GoogleSignIn.instance.initialize();
-      _googleInitialized = true;
-    }
-
-    final GoogleSignInAccount googleUser;
-    try {
-      googleUser = await GoogleSignIn.instance.authenticate();
-    } on GoogleSignInException catch (e) {
-      if (e.code == GoogleSignInExceptionCode.canceled ||
-          e.code == GoogleSignInExceptionCode.interrupted) {
-        throw Exception('Google Sign-In was cancelled.');
-      }
-      rethrow;
-    }
-
-    final GoogleSignInAuthentication googleAuth = googleUser.authentication;
-    final AuthCredential credential = GoogleAuthProvider.credential(
-      idToken: googleAuth.idToken,
-    );
-    return FirebaseAuth.instance.signInWithCredential(credential);
   }
 
   Future<void> _signInWithPhone() async {
@@ -599,52 +527,17 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 16),
                       
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: _isLoading ? null : _signInWithGoogle,
-                              icon: Container(
-                                padding: const EdgeInsets.all(4),
-                                decoration: const BoxDecoration(
-                                  color: Colors.white,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Text(
-                                  'G', 
-                                  style: TextStyle(
-                                    color: Colors.black, 
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
-                                  )
-                                ),
-                              ),
-                              label: const Text('Google', style: TextStyle(color: Colors.white)),
-                              style: OutlinedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(vertical: 12),
-                                side: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                            ),
+                      OutlinedButton.icon(
+                        onPressed: _isLoading ? null : _signInWithPhone,
+                        icon: const Icon(Icons.phone_android, color: Colors.white, size: 20),
+                        label: const Text('Phone', style: TextStyle(color: Colors.white)),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          side: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: _isLoading ? null : _signInWithPhone,
-                              icon: const Icon(Icons.phone_android, color: Colors.white, size: 20),
-                              label: const Text('Phone', style: TextStyle(color: Colors.white)),
-                              style: OutlinedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(vertical: 12),
-                                side: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
                     ],
                   ),

@@ -1,7 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+
+class _PhoneVerificationCancelled implements Exception {
+  const _PhoneVerificationCancelled();
+
+  @override
+  String toString() => 'Phone verification was cancelled.';
+}
 
 class UserRegistrationPage extends StatefulWidget {
   const UserRegistrationPage({super.key});
@@ -41,24 +50,31 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
     });
 
     try {
-      String loginEmail = _emailController.text.trim();
+      final String email = _emailController.text.trim();
+      final String password = _passwordController.text;
+      final String phone = '+91${_mobileController.text.trim()}';
 
-      // Create user with Firebase Auth
-      final UserCredential userCredential = await FirebaseAuth.instance
-          .createUserWithEmailAndPassword(
-        email: loginEmail,
-        password: _passwordController.text,
+      // Step 1: Verify the entered mobile number via OTP
+      final PhoneAuthCredential phoneCredential = await _verifyPhone(phone);
+
+      // Step 2: Sign in with the verified phone credential
+      final UserCredential userCredential =
+          await FirebaseAuth.instance.signInWithCredential(phoneCredential);
+
+      // Step 3: Link email & password so the same account can log in with either method
+      await userCredential.user!.linkWithCredential(
+        EmailAuthProvider.credential(email: email, password: password),
       );
 
       final String uid = userCredential.user!.uid;
 
-      // Prepare user data
+      // Step 4: Save user data
       final Map<String, dynamic> userData = {
         'uid': uid,
         'role': 'customer',
         'name': _nameController.text.trim(),
         'mobileNumber': _mobileController.text.trim(),
-        'email': _emailController.text.trim(), // The actual provided email (or empty)
+        'email': email,
         'address': _addressController.text.trim(),
         'createdAt': FieldValue.serverTimestamp(),
         'status': 'active', // Customers are active immediately
@@ -67,11 +83,7 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
       // Save to Firestore
       await FirebaseFirestore.instance.collection('users').doc(uid).set(userData);
 
-      // Sign out immediately or keep them signed in? 
-      // Usually after registration you can redirect them directly to the dashboard, 
-      // but let's sign them out and let them log in properly for better state management.
-      await FirebaseAuth.instance.signOut();
-
+      // Keep the user signed in so AuthGate routes them straight to the dashboard.
       if (mounted) {
         showDialog(
           context: context,
@@ -105,7 +117,7 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Your account has been created successfully. You can now log in.',
+                      'Your account has been created successfully. You are now logged in!',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 14,
@@ -119,20 +131,30 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
           },
         );
 
-        // Automatically close dialog and navigate back after 2 seconds
+        // Automatically close dialog and land on the dashboard after 2 seconds
         Future.delayed(const Duration(seconds: 2), () {
           if (mounted) {
             Navigator.of(context).pop(); // Close dialog
-            Navigator.of(context).pop(); // Go back to login
+            Navigator.of(context).pop(); // Close registration; AuthGate shows dashboard
           }
         });
       }
     } on FirebaseAuthException catch (e) {
+      await FirebaseAuth.instance.signOut();
       String errorMessage = 'An error occurred during registration.';
       if (e.code == 'weak-password') {
         errorMessage = 'The password provided is too weak.';
-      } else if (e.code == 'email-already-in-use') {
+      } else if (e.code == 'email-already-in-use' ||
+          e.code == 'provider-already-linked' ||
+          e.code == 'account-exists-with-different-credential') {
         errorMessage = 'An account already exists for that email or mobile number.';
+      } else if (e.code == 'invalid-phone-number') {
+        errorMessage = 'Please enter a valid mobile number.';
+      } else if (e.code == 'invalid-verification-code' ||
+          e.code == 'invalid-verification-id') {
+        errorMessage = 'Invalid OTP. Please try again.';
+      } else {
+        errorMessage = e.message ?? errorMessage;
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -140,6 +162,7 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
         );
       }
     } catch (e) {
+      await FirebaseAuth.instance.signOut();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(e.toString()), backgroundColor: Colors.redAccent),
@@ -152,6 +175,93 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
         });
       }
     }
+  }
+
+  Future<PhoneAuthCredential> _verifyPhone(String phoneNumber) async {
+    final Completer<PhoneAuthCredential> completer = Completer<PhoneAuthCredential>();
+
+    await FirebaseAuth.instance.verifyPhoneNumber(
+      phoneNumber: phoneNumber,
+      verificationCompleted: (PhoneAuthCredential credential) {
+        if (!completer.isCompleted) {
+          completer.complete(credential);
+        }
+      },
+      verificationFailed: (FirebaseAuthException e) {
+        if (!completer.isCompleted) {
+          completer.completeError(e);
+        }
+      },
+      codeSent: (String verificationId, int? resendToken) async {
+        final String? otp = await _showOtpDialog();
+        if (otp == null || otp.isEmpty) {
+          if (!completer.isCompleted) {
+            completer.completeError(const _PhoneVerificationCancelled());
+          }
+          return;
+        }
+        if (!completer.isCompleted) {
+          completer.complete(
+            PhoneAuthProvider.credential(verificationId: verificationId, smsCode: otp),
+          );
+        }
+      },
+      codeAutoRetrievalTimeout: (String verificationId) {},
+    );
+
+    return completer.future;
+  }
+
+  Future<String?> _showOtpDialog() async {
+    final TextEditingController otpController = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF132238),
+          title: const Text('Enter OTP', style: TextStyle(color: Colors.white)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Enter the 6-digit code sent to your mobile number',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: otpController,
+                autofocus: true,
+                style: const TextStyle(color: Colors.white),
+                keyboardType: TextInputType.number,
+                maxLength: 6,
+                decoration: InputDecoration(
+                  hintText: '123456',
+                  hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
+                  enabledBorder: const UnderlineInputBorder(
+                    borderSide: BorderSide(color: Colors.white),
+                  ),
+                  focusedBorder: const UnderlineInputBorder(
+                    borderSide: BorderSide(color: Color(0xFF00B4D8)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, otpController.text.trim()),
+              child: const Text('Verify', style: TextStyle(color: Color(0xFF00B4D8))),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Widget _buildSectionHeader(String title, {IconData? icon}) {
