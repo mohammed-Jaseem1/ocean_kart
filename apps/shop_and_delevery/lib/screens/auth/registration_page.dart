@@ -172,7 +172,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 14,
-                        color: Colors.white.withOpacity(0.7),
+                        color: Colors.white.withValues(alpha: 0.7),
                       ),
                     ),
                   ],
@@ -265,7 +265,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
         ] : (isPhone ? [FilteringTextInputFormatter.digitsOnly] : null),
         decoration: InputDecoration(
           labelText: label + (isRequired ? ' *' : ''),
-          labelStyle: TextStyle(color: Colors.white.withOpacity(0.6)),
+          labelStyle: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
           prefixText: isMobileNumber ? '+91 ' : null,
           prefixStyle: isMobileNumber ? const TextStyle(color: Colors.white, fontSize: 16) : null,
           prefixIcon: Icon(icon, color: primaryBlue),
@@ -275,16 +275,16 @@ class _RegistrationPageState extends State<RegistrationPage> {
                     obscureText
                         ? Icons.visibility_outlined
                         : Icons.visibility_off_outlined,
-                    color: Colors.white.withOpacity(0.6),
+                    color: Colors.white.withValues(alpha: 0.6),
                   ),
                   onPressed: onToggleObscure,
                 )
               : null,
           filled: true,
-          fillColor: darkBackground.withOpacity(0.5),
+          fillColor: darkBackground.withValues(alpha: 0.5),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.white.withOpacity(0.1)),
+            borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
@@ -352,10 +352,10 @@ class _RegistrationPageState extends State<RegistrationPage> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                   decoration: BoxDecoration(
-                    color: darkBackground.withOpacity(0.5),
+                    color: darkBackground.withValues(alpha: 0.5),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: state.hasError ? Colors.redAccent : Colors.white.withOpacity(0.1),
+                      color: state.hasError ? Colors.redAccent : Colors.white.withValues(alpha: 0.1),
                     ),
                   ),
                   child: Row(
@@ -367,8 +367,8 @@ class _RegistrationPageState extends State<RegistrationPage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              label + ' *',
-                              style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12),
+                              '$label *',
+                              style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 12),
                             ),
                             const SizedBox(height: 4),
                             Text(
@@ -422,18 +422,18 @@ class _RegistrationPageState extends State<RegistrationPage> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16.0),
       child: DropdownButtonFormField<String>(
-        value: value,
+        initialValue: value,
         style: const TextStyle(color: Colors.white),
         dropdownColor: darkBackground,
         decoration: InputDecoration(
-          labelText: label + ' *',
-          labelStyle: TextStyle(color: Colors.white.withOpacity(0.6)),
+          labelText: '$label *',
+          labelStyle: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
           prefixIcon: Icon(icon, color: primaryBlue),
           filled: true,
-          fillColor: darkBackground.withOpacity(0.5),
+          fillColor: darkBackground.withValues(alpha: 0.5),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.white.withOpacity(0.1)),
+            borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
@@ -490,7 +490,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
                 side: BorderSide(
-                  color: Colors.white.withOpacity(0.05),
+                  color: Colors.white.withValues(alpha: 0.05),
                   width: 1,
                 ),
               ),

@@ -109,7 +109,7 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 14,
-                        color: Colors.white.withOpacity(0.7),
+                        color: Colors.white.withValues(alpha: 0.7),
                       ),
                     ),
                   ],
@@ -175,7 +175,7 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Divider(color: Colors.white.withOpacity(0.1), thickness: 1),
+            child: Divider(color: Colors.white.withValues(alpha: 0.1), thickness: 1),
           ),
         ],
       ),
@@ -214,24 +214,24 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
         ] : null,
         decoration: InputDecoration(
           labelText: label + (isRequired ? ' *' : ''),
-          labelStyle: TextStyle(color: Colors.white.withOpacity(0.6)),
+          labelStyle: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
           prefixText: isPhone ? '+91 ' : null,
           prefixStyle: isPhone ? const TextStyle(color: Colors.white, fontSize: 16) : null,
-          prefixIcon: Icon(icon, color: primaryBlue.withOpacity(0.8)),
+          prefixIcon: Icon(icon, color: primaryBlue.withValues(alpha: 0.8)),
           suffixIcon: isPassword
               ? IconButton(
                   icon: Icon(
                     obscureText ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-                    color: Colors.white.withOpacity(0.6),
+                    color: Colors.white.withValues(alpha: 0.6),
                   ),
                   onPressed: onToggleObscure,
                 )
               : null,
           filled: true,
-          fillColor: darkBackground.withOpacity(0.5),
+          fillColor: darkBackground.withValues(alpha: 0.5),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.white.withOpacity(0.1)),
+            borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
@@ -298,7 +298,7 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
                 side: BorderSide(
-                  color: Colors.white.withOpacity(0.05),
+                  color: Colors.white.withValues(alpha: 0.05),
                   width: 1,
                 ),
               ),
@@ -324,7 +324,7 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 14,
-                          color: Colors.white.withOpacity(0.6),
+                          color: Colors.white.withValues(alpha: 0.6),
                         ),
                       ),
                       const SizedBox(height: 16),

@@ -39,7 +39,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           setState(() => _isLoading = false);
         }
       } catch (e) {
-        print("Error fetching user data: $e");
+        debugPrint("Error fetching user data: $e");
         if (mounted) {
           setState(() => _isLoading = false);
         }
@@ -107,7 +107,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             padding: const EdgeInsets.all(4),
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: Colors.white.withOpacity(0.2),
+                              color: Colors.white.withValues(alpha: 0.2),
                             ),
                             child: CircleAvatar(
                               radius: 45,
@@ -136,7 +136,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             phone,
                             style: TextStyle(
                               fontSize: 14,
-                              color: Colors.white.withOpacity(0.9),
+                              color: Colors.white.withValues(alpha: 0.9),
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -169,7 +169,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               borderRadius: BorderRadius.circular(16),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withOpacity(0.03),
+                                  color: Colors.black.withValues(alpha: 0.03),
                                   blurRadius: 10,
                                   offset: const Offset(0, 4),
                                 ),
@@ -180,7 +180,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 Container(
                                   padding: const EdgeInsets.all(12),
                                   decoration: BoxDecoration(
-                                    color: _lightBlue.withOpacity(0.1),
+                                    color: _lightBlue.withValues(alpha: 0.1),
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: Icon(Icons.location_on, color: _lightBlue, size: 28),
@@ -203,7 +203,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         address,
                                         style: TextStyle(
                                           fontSize: 14,
-                                          color: _textColor.withOpacity(0.6),
+                                          color: _textColor.withValues(alpha: 0.6),
                                           height: 1.3,
                                         ),
                                       ),
@@ -262,9 +262,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           child: Container(
                             padding: const EdgeInsets.symmetric(vertical: 16),
                             decoration: BoxDecoration(
-                              color: Colors.redAccent.withOpacity(0.1),
+                              color: Colors.redAccent.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: Colors.redAccent.withOpacity(0.3)),
+                              border: Border.all(color: Colors.redAccent.withValues(alpha: 0.3)),
                             ),
                             child: const Row(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -301,7 +301,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.02),
+            color: Colors.black.withValues(alpha: 0.02),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -319,7 +319,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: _lightBlue.withOpacity(0.1),
+                    color: _lightBlue.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(icon, color: _lightBlue, size: 22),
@@ -335,7 +335,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                 ),
-                Icon(Icons.chevron_right, color: _textColor.withOpacity(0.4)),
+                Icon(Icons.chevron_right, color: _textColor.withValues(alpha: 0.4)),
               ],
             ),
           ),

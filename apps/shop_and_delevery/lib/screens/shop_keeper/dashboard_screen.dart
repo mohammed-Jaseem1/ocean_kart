@@ -93,7 +93,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     const lightBlue = Color(0xFF00B4D8);
     const backgroundWhite = Color(0xFFF5F7FA); // A light greyish white for modern contrast
 
-    final List<Widget> _pages = [
+    final List<Widget> pages = [
       _buildDashboardContent(context, navyBlue, lightBlue),
       const InventoryHomeScreen(),
       const OrdersScreen(isHistory: false),
@@ -129,7 +129,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           )
         ],
       ),
-      body: _pages[_selectedIndex],
+      body: pages[_selectedIndex],
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: (index) {
@@ -202,7 +202,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w400,
-                      color: Colors.white.withOpacity(0.8),
+                      color: Colors.white.withValues(alpha: 0.8),
                     ),
                   ),
                   const SizedBox(height: 6),
@@ -324,13 +324,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: color.withOpacity(0.12),
+            color: color.withValues(alpha: 0.12),
             blurRadius: 15,
             spreadRadius: 2,
             offset: const Offset(0, 6),
           ),
         ],
-        border: Border.all(color: color.withOpacity(0.05)),
+        border: Border.all(color: color.withValues(alpha: 0.05)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -343,7 +343,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [color.withOpacity(0.2), color.withOpacity(0.05)],
+                    colors: [color.withValues(alpha: 0.2), color.withValues(alpha: 0.05)],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
@@ -403,12 +403,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: color.withOpacity(0.08),
+              color: color.withValues(alpha: 0.08),
               blurRadius: 15,
               offset: const Offset(0, 6),
             ),
           ],
-          border: Border.all(color: color.withOpacity(0.1)),
+          border: Border.all(color: color.withValues(alpha: 0.1)),
         ),
         child: Row(
           children: [
@@ -416,7 +416,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [color.withOpacity(0.2), color.withOpacity(0.05)],
+                  colors: [color.withValues(alpha: 0.2), color.withValues(alpha: 0.05)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),

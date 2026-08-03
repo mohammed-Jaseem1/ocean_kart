@@ -172,14 +172,14 @@ class _DeliveryPartnerDashboardState extends State<DeliveryPartnerDashboard> {
           padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [_navyBlue, _lightBlue.withOpacity(0.8)],
+              colors: [_navyBlue, _lightBlue.withValues(alpha: 0.8)],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: _lightBlue.withOpacity(0.3),
+                color: _lightBlue.withValues(alpha: 0.3),
                 blurRadius: 10,
                 offset: const Offset(0, 5),
               ),
@@ -191,7 +191,7 @@ class _DeliveryPartnerDashboardState extends State<DeliveryPartnerDashboard> {
               Text(
                 "Performance Overview",
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.9),
+                  color: Colors.white.withValues(alpha: 0.9),
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                   letterSpacing: 0.5,
@@ -209,7 +209,7 @@ class _DeliveryPartnerDashboardState extends State<DeliveryPartnerDashboard> {
                   Container(
                     width: 1,
                     height: 50,
-                    color: Colors.white.withOpacity(0.2),
+                    color: Colors.white.withValues(alpha: 0.2),
                   ),
                   _buildStatItem(
                     'Total Earnings',
@@ -232,7 +232,7 @@ class _DeliveryPartnerDashboardState extends State<DeliveryPartnerDashboard> {
                   Container(
                     width: 1,
                     height: 50,
-                    color: Colors.white.withOpacity(0.2),
+                    color: Colors.white.withValues(alpha: 0.2),
                   ),
                   _buildStatItem(
                     'Total Value',
@@ -265,7 +265,7 @@ class _DeliveryPartnerDashboardState extends State<DeliveryPartnerDashboard> {
         Text(
           label,
           style: TextStyle(
-            color: Colors.white.withOpacity(0.8),
+            color: Colors.white.withValues(alpha: 0.8),
             fontSize: 12,
             fontWeight: FontWeight.w500,
           ),
@@ -290,16 +290,19 @@ class _DeliveryPartnerDashboardState extends State<DeliveryPartnerDashboard> {
                 .where('status', isEqualTo: 'ready_for_delivery')
                 .snapshots(),
             builder: (context, fallbackSnap) {
-              if (fallbackSnap.hasError)
+              if (fallbackSnap.hasError) {
                 return Center(child: Text('Error: ${fallbackSnap.error}'));
-              if (!fallbackSnap.hasData)
+              }
+              if (!fallbackSnap.hasData) {
                 return const Center(child: CircularProgressIndicator());
+              }
               return _buildOrdersList(fallbackSnap.data!.docs, true);
             },
           );
         }
-        if (!snapshot.hasData)
+        if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
+        }
         return _buildOrdersList(snapshot.data!.docs, true);
       },
     );
@@ -322,16 +325,19 @@ class _DeliveryPartnerDashboardState extends State<DeliveryPartnerDashboard> {
                 .where('status', isEqualTo: 'out_for_delivery')
                 .snapshots(),
             builder: (context, fallbackSnap) {
-              if (fallbackSnap.hasError)
+              if (fallbackSnap.hasError) {
                 return Center(child: Text('Error: ${fallbackSnap.error}'));
-              if (!fallbackSnap.hasData)
+              }
+              if (!fallbackSnap.hasData) {
                 return const Center(child: CircularProgressIndicator());
+              }
               return _buildOrdersList(fallbackSnap.data!.docs, false);
             },
           );
         }
-        if (!snapshot.hasData)
+        if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
+        }
         return _buildOrdersList(snapshot.data!.docs, false);
       },
     );
@@ -354,10 +360,12 @@ class _DeliveryPartnerDashboardState extends State<DeliveryPartnerDashboard> {
                 .where('status', isEqualTo: 'completed')
                 .snapshots(),
             builder: (context, fallbackSnap) {
-              if (fallbackSnap.hasError)
+              if (fallbackSnap.hasError) {
                 return Center(child: Text('Error: ${fallbackSnap.error}'));
-              if (!fallbackSnap.hasData)
+              }
+              if (!fallbackSnap.hasData) {
                 return const Center(child: CircularProgressIndicator());
+              }
               return _buildOrdersList(
                 fallbackSnap.data!.docs,
                 false,
@@ -366,8 +374,9 @@ class _DeliveryPartnerDashboardState extends State<DeliveryPartnerDashboard> {
             },
           );
         }
-        if (!snapshot.hasData)
+        if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
+        }
         return _buildOrdersList(snapshot.data!.docs, false, isHistory: true);
       },
     );
@@ -424,7 +433,7 @@ class _DeliveryPartnerDashboardState extends State<DeliveryPartnerDashboard> {
             border: Border.all(color: Colors.grey.shade200),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.04),
+                color: Colors.black.withValues(alpha: 0.04),
                 blurRadius: 10,
                 offset: const Offset(0, 4),
               ),
@@ -445,10 +454,10 @@ class _DeliveryPartnerDashboardState extends State<DeliveryPartnerDashboard> {
                       ),
                       decoration: BoxDecoration(
                         color: isHistory
-                            ? Colors.green.withOpacity(0.1)
+                            ? Colors.green.withValues(alpha: 0.1)
                             : (isAvailable
-                                  ? _lightBlue.withOpacity(0.1)
-                                  : Colors.orange.withOpacity(0.1)),
+                                  ? _lightBlue.withValues(alpha: 0.1)
+                                  : Colors.orange.withValues(alpha: 0.1)),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
@@ -607,7 +616,7 @@ class _DeliveryPartnerDashboardState extends State<DeliveryPartnerDashboard> {
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     decoration: BoxDecoration(
-                      color: Colors.green.withOpacity(0.1),
+                      color: Colors.green.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Center(

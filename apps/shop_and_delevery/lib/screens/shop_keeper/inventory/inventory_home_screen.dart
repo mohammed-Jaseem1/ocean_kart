@@ -32,7 +32,7 @@ class _InventoryHomeScreenState extends State<InventoryHomeScreen> {
   }
 
   Future<void> _editPrice(String productId, double currentPrice) async {
-    final _priceController = TextEditingController(text: currentPrice.toString());
+    final priceController = TextEditingController(text: currentPrice.toString());
     final result = await showDialog<double>(
       context: context,
       builder: (context) {
@@ -40,7 +40,7 @@ class _InventoryHomeScreenState extends State<InventoryHomeScreen> {
           title: const Text('Edit Sale Price (₹)', style: TextStyle(color: Colors.black)),
           backgroundColor: Colors.white,
           content: TextField(
-            controller: _priceController,
+            controller: priceController,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             style: const TextStyle(color: Colors.black),
             decoration: const InputDecoration(
@@ -56,7 +56,7 @@ class _InventoryHomeScreenState extends State<InventoryHomeScreen> {
             ),
             ElevatedButton(
               onPressed: () {
-                final newPrice = double.tryParse(_priceController.text);
+                final newPrice = double.tryParse(priceController.text);
                 Navigator.pop(context, newPrice);
               },
               style: ElevatedButton.styleFrom(backgroundColor: Colors.black),
@@ -269,13 +269,13 @@ class _InventoryHomeScreenState extends State<InventoryHomeScreen> {
                                       ),
                                     ),
                                     InkWell(
-                                      onTap: () => _updateStock(productId, currentStock, 1.0),
-                                      child: Container(
-                                        padding: const EdgeInsets.all(4),
-                                        decoration: BoxDecoration(color: lightBlue.withOpacity(0.2), borderRadius: BorderRadius.circular(4)),
-                                        child: const Icon(Icons.add, size: 16, color: lightBlue),
-                                      ),
-                                    ),
+                                       onTap: () => _updateStock(productId, currentStock, 1.0),
+                                       child: Container(
+                                         padding: const EdgeInsets.all(4),
+                                         decoration: BoxDecoration(color: lightBlue.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(4)),
+                                         child: const Icon(Icons.add, size: 16, color: lightBlue),
+                                       ),
+                                     ),
                                   ],
                                 ),
                               ],

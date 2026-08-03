@@ -78,7 +78,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
 
-    if (pickedFile == null) return;
+    if (pickedFile == null || !mounted) return;
 
     final croppedFile = await ImageCropper().cropImage(
       sourcePath: pickedFile.path,
@@ -218,13 +218,13 @@ class _AddProductScreenState extends State<AddProductScreen> {
     const accentColor = Colors.black;
 
     final inputDecoration = InputDecoration(
-      hintStyle: TextStyle(color: Colors.black.withOpacity(0.4), fontSize: 14),
+      hintStyle: TextStyle(color: Colors.black.withValues(alpha: 0.4), fontSize: 14),
       filled: true,
-      fillColor: Colors.black.withOpacity(0.05),
+      fillColor: Colors.black.withValues(alpha: 0.05),
       contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.black.withOpacity(0.1)),
+        borderSide: BorderSide(color: Colors.black.withValues(alpha: 0.1)),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
@@ -248,7 +248,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.bold,
-            color: Colors.black.withOpacity(0.7),
+            color: Colors.black.withValues(alpha: 0.7),
             letterSpacing: 0.5,
           ),
         ),
@@ -288,7 +288,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(20),
               side: BorderSide(
-                color: Colors.black.withOpacity(0.05),
+                color: Colors.black.withValues(alpha: 0.05),
                 width: 1,
               ),
             ),
@@ -307,10 +307,10 @@ class _AddProductScreenState extends State<AddProductScreen> {
                           height: 110,
                           width: 110,
                           decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.05),
+                            color: Colors.black.withValues(alpha: 0.05),
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
-                              color: _imageUrl != null ? Colors.green : Colors.black.withOpacity(0.2),
+                              color: _imageUrl != null ? Colors.green : Colors.black.withValues(alpha: 0.2),
                               width: 2,
                             ),
                             image: _imageBytes != null
@@ -329,13 +329,13 @@ class _AddProductScreenState extends State<AddProductScreen> {
                               ? Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    Icon(Icons.add_a_photo_outlined, size: 32, color: Colors.black.withOpacity(0.5)),
+                                    Icon(Icons.add_a_photo_outlined, size: 32, color: Colors.black.withValues(alpha: 0.5)),
                                     const SizedBox(height: 8),
                                     Text(
                                       'Upload',
                                       style: TextStyle(
                                         fontSize: 12,
-                                        color: Colors.black.withOpacity(0.5),
+                                        color: Colors.black.withValues(alpha: 0.5),
                                         fontWeight: FontWeight.bold,
                                       ),
                                     ),
@@ -394,7 +394,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
                     buildLabel('CATEGORY *'),
                     DropdownButtonFormField<String>(
-                      value: _selectedCategory,
+                      initialValue: _selectedCategory,
                       dropdownColor: cardColor,
                       style: const TextStyle(color: Colors.black),
                       decoration: inputDecoration.copyWith(
@@ -421,7 +421,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
                       color: Colors.white,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(color: Colors.black.withOpacity(0.1)),
+                        side: BorderSide(color: Colors.black.withValues(alpha: 0.1)),
                       ),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(vertical: 4.0),
@@ -437,7 +437,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
                                 ),
                               ),
                               value: _isOffer,
-                              activeColor: Colors.blueAccent,
+                              activeThumbColor: Colors.blueAccent,
                               onChanged: (bool value) {
                                 setState(() {
                                   _isOffer = value;

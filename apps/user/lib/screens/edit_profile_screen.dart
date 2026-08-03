@@ -102,7 +102,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     padding: const EdgeInsets.all(4),
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: _lightBlue.withOpacity(0.1),
+                      color: _lightBlue.withValues(alpha: 0.1),
                     ),
                     child: CircleAvatar(
                       radius: 50,

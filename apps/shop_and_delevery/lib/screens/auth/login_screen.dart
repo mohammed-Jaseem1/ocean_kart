@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:google_sign_in/google_sign_in.dart';
 import 'registration_page.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -19,6 +19,7 @@ class _LoginScreenState extends State<LoginScreen> {
   
   bool _isLoading = false;
   bool _obscurePassword = true;
+  bool _googleInitialized = false;
   String? _errorMessage;
 
   @override
@@ -96,7 +97,7 @@ class _LoginScreenState extends State<LoginScreen> {
       });
     } catch (e) {
       if (!mounted) return;
-      print('Login error: $e');
+      debugPrint('Login error: $e');
       setState(() {
         _errorMessage = 'Error: $e';
       });
@@ -116,15 +117,7 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      UserCredential userCredential;
-
-      if (kIsWeb) {
-        GoogleAuthProvider googleProvider = GoogleAuthProvider();
-        userCredential = await FirebaseAuth.instance.signInWithPopup(googleProvider);
-      } else {
-        GoogleAuthProvider googleProvider = GoogleAuthProvider();
-        userCredential = await FirebaseAuth.instance.signInWithProvider(googleProvider);
-      }
+      final UserCredential userCredential = await _googleSignIn();
 
       if (userCredential.user != null) {
         final doc = await FirebaseFirestore.instance.collection('users').doc(userCredential.user!.uid).get();
@@ -157,6 +150,35 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<UserCredential> _googleSignIn() async {
+    if (kIsWeb) {
+      final GoogleAuthProvider googleProvider = GoogleAuthProvider();
+      return FirebaseAuth.instance.signInWithPopup(googleProvider);
+    }
+
+    if (!_googleInitialized) {
+      await GoogleSignIn.instance.initialize();
+      _googleInitialized = true;
+    }
+
+    final GoogleSignInAccount googleUser;
+    try {
+      googleUser = await GoogleSignIn.instance.authenticate();
+    } on GoogleSignInException catch (e) {
+      if (e.code == GoogleSignInExceptionCode.canceled ||
+          e.code == GoogleSignInExceptionCode.interrupted) {
+        throw Exception('Google Sign-In was cancelled.');
+      }
+      rethrow;
+    }
+
+    final GoogleSignInAuthentication googleAuth = googleUser.authentication;
+    final AuthCredential credential = GoogleAuthProvider.credential(
+      idToken: googleAuth.idToken,
+    );
+    return FirebaseAuth.instance.signInWithCredential(credential);
+  }
+
   Future<void> _signInWithPhone() async {
     final phoneController = TextEditingController();
     
@@ -172,7 +194,7 @@ class _LoginScreenState extends State<LoginScreen> {
           keyboardType: TextInputType.phone,
           decoration: InputDecoration(
             hintText: '+91 9876543210',
-            hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+            hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
             enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white)),
             focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF00B4D8))),
           ),
@@ -227,7 +249,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 keyboardType: TextInputType.number,
                 decoration: InputDecoration(
                   hintText: '123456',
-                  hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+                  hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
                   enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white)),
                   focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF00B4D8))),
                 ),
@@ -325,7 +347,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.2),
+                        color: Colors.black.withValues(alpha: 0.2),
                         blurRadius: 20,
                         offset: const Offset(0, 10),
                       ),
@@ -357,7 +379,7 @@ class _LoginScreenState extends State<LoginScreen> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
                 side: BorderSide(
-                  color: Colors.white.withOpacity(0.05),
+                  color: Colors.white.withValues(alpha: 0.05),
                   width: 1,
                 ),
               ),
@@ -388,7 +410,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 14,
-                          color: Colors.white.withOpacity(0.6),
+                          color: Colors.white.withValues(alpha: 0.6),
                         ),
                       ),
                       const SizedBox(height: 24),
@@ -397,10 +419,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: Colors.redAccent.withOpacity(0.15),
+                            color: Colors.redAccent.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
-                              color: Colors.redAccent.withOpacity(0.3),
+                              color: Colors.redAccent.withValues(alpha: 0.3),
                             ),
                           ),
                           child: Text(
@@ -421,13 +443,13 @@ class _LoginScreenState extends State<LoginScreen> {
                         style: const TextStyle(color: Colors.white),
                         decoration: InputDecoration(
                           labelText: 'Email Address',
-                          labelStyle: TextStyle(color: Colors.white.withOpacity(0.6)),
+                          labelStyle: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
                           prefixIcon: const Icon(Icons.email_outlined, color: primaryBlue),
                           filled: true,
-                          fillColor: darkBackground.withOpacity(0.5),
+                          fillColor: darkBackground.withValues(alpha: 0.5),
                           enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(color: Colors.white.withOpacity(0.1)),
+                            borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
@@ -461,12 +483,12 @@ class _LoginScreenState extends State<LoginScreen> {
                         obscureText: _obscurePassword,
                         decoration: InputDecoration(
                           labelText: 'Password',
-                          labelStyle: TextStyle(color: Colors.white.withOpacity(0.6)),
+                          labelStyle: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
                           prefixIcon: const Icon(Icons.lock_outlined, color: primaryBlue),
                           suffixIcon: IconButton(
                             icon: Icon(
                               _obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-                              color: Colors.white.withOpacity(0.6),
+                              color: Colors.white.withValues(alpha: 0.6),
                             ),
                             onPressed: () {
                               setState(() {
@@ -475,10 +497,10 @@ class _LoginScreenState extends State<LoginScreen> {
                             },
                           ),
                           filled: true,
-                          fillColor: darkBackground.withOpacity(0.5),
+                          fillColor: darkBackground.withValues(alpha: 0.5),
                           enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(color: Colors.white.withOpacity(0.1)),
+                            borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
@@ -560,19 +582,19 @@ class _LoginScreenState extends State<LoginScreen> {
                       
                       Row(
                         children: [
-                          Expanded(child: Divider(color: Colors.white.withOpacity(0.2))),
+                          Expanded(child: Divider(color: Colors.white.withValues(alpha: 0.2))),
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 16),
                             child: Text(
                               'OR CONTINUE WITH',
                               style: TextStyle(
-                                color: Colors.white.withOpacity(0.5),
+                                color: Colors.white.withValues(alpha: 0.5),
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
                           ),
-                          Expanded(child: Divider(color: Colors.white.withOpacity(0.2))),
+                          Expanded(child: Divider(color: Colors.white.withValues(alpha: 0.2))),
                         ],
                       ),
                       const SizedBox(height: 16),
@@ -600,7 +622,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               label: const Text('Google', style: TextStyle(color: Colors.white)),
                               style: OutlinedButton.styleFrom(
                                 padding: const EdgeInsets.symmetric(vertical: 12),
-                                side: BorderSide(color: Colors.white.withOpacity(0.2)),
+                                side: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),
@@ -615,7 +637,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               label: const Text('Phone', style: TextStyle(color: Colors.white)),
                               style: OutlinedButton.styleFrom(
                                 padding: const EdgeInsets.symmetric(vertical: 12),
-                                side: BorderSide(color: Colors.white.withOpacity(0.2)),
+                                side: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),

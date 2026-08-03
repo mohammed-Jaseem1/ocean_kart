@@ -143,10 +143,15 @@ class _OrdersScreenState extends State<OrdersScreen> {
         }
 
         Color statusColor = Colors.orange;
-        if (status == 'completed' || status == 'delivered') statusColor = Colors.green;
-        else if (status == 'ready_for_delivery') statusColor = Colors.blue;
-        else if (status == 'out_for_delivery') statusColor = Colors.teal;
-        else if (status == 'cancelled') statusColor = Colors.red;
+        if (status == 'completed' || status == 'delivered') {
+          statusColor = Colors.green;
+        } else if (status == 'ready_for_delivery') {
+          statusColor = Colors.blue;
+        } else if (status == 'out_for_delivery') {
+          statusColor = Colors.teal;
+        } else if (status == 'cancelled') {
+          statusColor = Colors.red;
+        }
 
         return Card(
           margin: const EdgeInsets.only(bottom: 16),
@@ -168,7 +173,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: statusColor.withOpacity(0.1),
+                        color: statusColor.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
@@ -228,7 +233,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                       ],
                     ),
                   );
-                }).toList(),
+                }),
                 
                 const SizedBox(height: 12),
                 Row(

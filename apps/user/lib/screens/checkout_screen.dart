@@ -94,7 +94,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       });
       _recalculateTotal();
     } catch (e) {
-      print('Error init checkout: $e');
+      debugPrint('Error init checkout: $e');
       setState(() => _isLoadingItems = false);
     }
   }
@@ -156,7 +156,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               .doc(item['productId'])
               .delete();
         } catch (e) {
-          print('Error removing from cart: $e');
+          debugPrint('Error removing from cart: $e');
         }
       }
     }
@@ -414,7 +414,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF0A1628).withOpacity(0.3),
+                          color: const Color(0xFF0A1628).withValues(alpha: 0.3),
                           blurRadius: 15,
                           offset: const Offset(0, 8),
                         ),
@@ -426,7 +426,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         Text(
                           'Total Amount To Pay',
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.8),
+                            color: Colors.white.withValues(alpha: 0.8),
                             fontSize: 14,
                             fontWeight: FontWeight.w500,
                           ),
@@ -445,7 +445,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           child: Text(
                             '${_itemsToOrder.length} item(s) selected',
                             style: TextStyle(
-                              color: Colors.white.withOpacity(0.6),
+                              color: Colors.white.withValues(alpha: 0.6),
                               fontSize: 12,
                             ),
                           ),
@@ -506,7 +506,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           borderRadius: BorderRadius.circular(16),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.03),
+                              color: Colors.black.withValues(alpha: 0.03),
                               blurRadius: 10,
                               offset: const Offset(0, 4),
                             ),
@@ -651,7 +651,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                                     ),
                                                 selectedColor: const Color(
                                                   0xFF00B4D8,
-                                                ).withOpacity(0.2),
+                                                ).withValues(alpha: 0.2),
                                                 checkmarkColor: const Color(
                                                   0xFF00B4D8,
                                                 ),
@@ -713,7 +713,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       borderRadius: BorderRadius.circular(16),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.03),
+                          color: Colors.black.withValues(alpha: 0.03),
                           blurRadius: 10,
                           offset: const Offset(0, 4),
                         ),
@@ -781,7 +781,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       borderRadius: BorderRadius.circular(16),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.03),
+                          color: Colors.black.withValues(alpha: 0.03),
                           blurRadius: 10,
                           offset: const Offset(0, 4),
                         ),
@@ -836,12 +836,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: const Color(0xFF00B4D8).withOpacity(0.5),
+                        color: const Color(0xFF00B4D8).withValues(alpha: 0.5),
                         width: 2,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF00B4D8).withOpacity(0.1),
+                          color: const Color(0xFF00B4D8).withValues(alpha: 0.1),
                           blurRadius: 10,
                           offset: const Offset(0, 4),
                         ),
@@ -852,7 +852,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF00B4D8).withOpacity(0.1),
+                            color: const Color(0xFF00B4D8).withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: const Icon(

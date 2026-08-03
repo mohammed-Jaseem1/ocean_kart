@@ -1,4 +1,4 @@
-package com.example.user
+package com.oceankartUser
 
 import io.flutter.embedding.android.FlutterActivity
 

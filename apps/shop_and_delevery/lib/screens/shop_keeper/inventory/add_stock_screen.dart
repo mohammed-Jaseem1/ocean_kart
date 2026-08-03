@@ -5,7 +5,6 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:typed_data';
 import 'dart:convert';
 import 'add_product_screen.dart';
-import 'product_management_screen.dart';
 
 class AddStockScreen extends StatefulWidget {
   final String? initialProductId;
@@ -80,7 +79,7 @@ class _AddStockScreenState extends State<AddStockScreen> {
         }
       }
     } catch (e) {
-      print('Error fetching products: $e');
+      debugPrint('Error fetching products: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error loading products: $e'), backgroundColor: Colors.red),
@@ -276,13 +275,13 @@ class _AddStockScreenState extends State<AddStockScreen> {
     const accentColor = Colors.black;
 
     final inputDecoration = InputDecoration(
-      hintStyle: TextStyle(color: Colors.black.withOpacity(0.4), fontSize: 14),
+      hintStyle: TextStyle(color: Colors.black.withValues(alpha: 0.4), fontSize: 14),
       filled: true,
-      fillColor: Colors.black.withOpacity(0.05),
+      fillColor: Colors.black.withValues(alpha: 0.05),
       contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.black.withOpacity(0.1)),
+        borderSide: BorderSide(color: Colors.black.withValues(alpha: 0.1)),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
@@ -306,7 +305,7 @@ class _AddStockScreenState extends State<AddStockScreen> {
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.bold,
-            color: Colors.black.withOpacity(0.7),
+            color: Colors.black.withValues(alpha: 0.7),
             letterSpacing: 0.5,
           ),
         ),
@@ -344,7 +343,7 @@ class _AddStockScreenState extends State<AddStockScreen> {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(20),
                     side: BorderSide(
-                      color: Colors.black.withOpacity(0.05),
+                      color: Colors.black.withValues(alpha: 0.05),
                       width: 1,
                     ),
                   ),
@@ -367,7 +366,7 @@ class _AddStockScreenState extends State<AddStockScreen> {
 
                           buildLabel('SELECT PRODUCT *'),
                           DropdownButtonFormField<String>(
-                            value: _selectedProductId,
+                            initialValue: _selectedProductId,
                             isExpanded: true,
                             dropdownColor: cardColor,
                             style: const TextStyle(color: Colors.black),
@@ -446,10 +445,10 @@ class _AddStockScreenState extends State<AddStockScreen> {
                                   height: 110,
                                   width: 110,
                                   decoration: BoxDecoration(
-                                    color: Colors.black.withOpacity(0.05),
+                                    color: Colors.black.withValues(alpha: 0.05),
                                     borderRadius: BorderRadius.circular(16),
                                     border: Border.all(
-                                      color: _imageUrl != null ? Colors.green : Colors.black.withOpacity(0.2),
+                                      color: _imageUrl != null ? Colors.green : Colors.black.withValues(alpha: 0.2),
                                       width: 2,
                                     ),
                                     image: _imageBytes != null
@@ -470,13 +469,13 @@ class _AddStockScreenState extends State<AddStockScreen> {
                                       ? Column(
                                           mainAxisAlignment: MainAxisAlignment.center,
                                           children: [
-                                            Icon(Icons.add_a_photo_outlined, size: 32, color: Colors.black.withOpacity(0.5)),
+                                            Icon(Icons.add_a_photo_outlined, size: 32, color: Colors.black.withValues(alpha: 0.5)),
                                             const SizedBox(height: 8),
                                             Text(
                                               'Add Image',
                                               style: TextStyle(
                                                 fontSize: 12,
-                                                color: Colors.black.withOpacity(0.5),
+                                                color: Colors.black.withValues(alpha: 0.5),
                                                 fontWeight: FontWeight.bold,
                                               ),
                                             ),

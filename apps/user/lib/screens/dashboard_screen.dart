@@ -32,9 +32,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     {'name': 'Offers', 'icon': Icons.local_offer},
   ];
 
-  Future<void> _handleLogout() async {
-    await FirebaseAuth.instance.signOut();
-  }
 
   Future<void> _addToCart(DocumentSnapshot doc) async {
     final user = FirebaseAuth.instance.currentUser;
@@ -67,7 +64,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           'shopId': data['shopId'],
         });
       }
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
@@ -78,11 +75,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
             duration: Duration(seconds: 1),
           ),
         );
+      }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Failed to add to cart: $e')));
+      }
     }
   }
 
@@ -136,7 +135,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: Text(
               'Fresh Stock Available',
               style: TextStyle(
-                color: _textColor.withOpacity(0.9),
+                color: _textColor.withValues(alpha: 0.9),
                 fontSize: 20,
                 fontWeight: FontWeight.w800,
                 letterSpacing: 0.5,
@@ -193,10 +192,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   final cat = (data['category'] ?? '').toString().toLowerCase();
                   final name = (data['name'] ?? '').toString().toLowerCase();
 
-                  if (cat.contains(query) || cat.contains(singularQuery))
+                  if (cat.contains(query) || cat.contains(singularQuery)) {
                     return true;
-                  if (name.contains(query) || name.contains(singularQuery))
+                  }
+                  if (name.contains(query) || name.contains(singularQuery)) {
                     return true;
+                  }
 
                   return false;
                 }).toList();
@@ -217,7 +218,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: Center(
                     child: Text(
                       'No products found.',
-                      style: TextStyle(color: _textColor.withOpacity(0.6)),
+                      style: TextStyle(color: _textColor.withValues(alpha: 0.6)),
                     ),
                   ),
                 ),
@@ -245,85 +246,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildMarketPage() {
-    return CustomScrollView(
-      physics: const BouncingScrollPhysics(),
-      slivers: [
-        SliverAppBar(
-          backgroundColor: _navyBlue,
-          floating: true,
-          pinned: true,
-          elevation: 0,
-          toolbarHeight: 70,
-          title: Text(
-            'Fish Market',
-            style: TextStyle(
-              color: _textColor,
-              fontWeight: FontWeight.bold,
-              fontSize: 24,
-            ),
-          ),
-          centerTitle: false,
-        ),
-        StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collectionGroup('products')
-              .snapshots(),
-          builder: (context, snapshot) {
-            if (!snapshot.hasData) {
-              return const SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.all(32.0),
-                  child: Center(child: CircularProgressIndicator()),
-                ),
-              );
-            }
-
-            final docs = snapshot.data!.docs.where((doc) {
-              final data = doc.data() as Map<String, dynamic>;
-              final stock = (data['stockQuantity'] as num?)?.toDouble() ?? 0;
-              return stock > 0;
-            }).toList();
-
-            if (docs.isEmpty) {
-              return SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.all(32.0),
-                  child: Center(
-                    child: Text(
-                      'No stock available right now.',
-                      style: TextStyle(color: _textColor.withOpacity(0.6)),
-                    ),
-                  ),
-                ),
-              );
-            }
-
-            return SliverPadding(
-              padding: const EdgeInsets.all(16.0),
-              sliver: SliverGrid(
-                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: 200.0,
-                  mainAxisSpacing: 12.0,
-                  crossAxisSpacing: 12.0,
-                  childAspectRatio: 0.85,
-                ),
-                delegate: SliverChildBuilderDelegate((context, index) {
-                  return _buildProductCard(docs[index]);
-                }, childCount: docs.length),
-              ),
-            );
-          },
-        ),
-        const SliverToBoxAdapter(child: SizedBox(height: 80)),
-      ],
-    );
-  }
 
   Widget _buildOrdersPage() {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null)
+    if (user == null) {
       return const Center(child: Text("Please login to view orders."));
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -355,20 +283,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       .where('userId', isEqualTo: user.uid)
                       .snapshots(),
                   builder: (context, snapshotBackup) {
-                    if (snapshotBackup.hasError)
+                    if (snapshotBackup.hasError) {
                       return Center(
                         child: Text(
                           'Error loading orders: ${snapshotBackup.error}',
                         ),
                       );
-                    if (!snapshotBackup.hasData)
+                    }
+                    if (!snapshotBackup.hasData) {
                       return const Center(child: CircularProgressIndicator());
+                    }
                     return _buildOrderList(snapshotBackup.data!.docs);
                   },
                 );
               }
-              if (!snapshot.hasData)
+              if (!snapshot.hasData) {
                 return const Center(child: CircularProgressIndicator());
+              }
               return _buildOrderList(snapshot.data!.docs);
             },
           ),
@@ -382,7 +313,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return Center(
         child: Text(
           'You have no orders yet.',
-          style: TextStyle(color: _textColor.withOpacity(0.6)),
+          style: TextStyle(color: _textColor.withValues(alpha: 0.6)),
         ),
       );
     }
@@ -397,10 +328,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         final items = data['items'] as List<dynamic>? ?? [];
 
         Color statusColor = Colors.orange;
-        if (status == 'completed' || status == 'delivered')
+        if (status == 'completed' || status == 'delivered') {
           statusColor = Colors.green;
-        else if (status == 'cancelled')
+        } else if (status == 'cancelled') {
           statusColor = Colors.red;
+        }
 
         return Container(
           margin: const EdgeInsets.only(bottom: 12),
@@ -410,7 +342,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.02),
+                color: Colors.black.withValues(alpha: 0.02),
                 blurRadius: 10,
                 offset: const Offset(0, 4),
               ),
@@ -436,7 +368,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: statusColor.withOpacity(0.1),
+                      color: statusColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
@@ -457,12 +389,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: Text(
                     '${item['quantity']}x ${item['name']}',
                     style: TextStyle(
-                      color: _textColor.withOpacity(0.8),
+                      color: _textColor.withValues(alpha: 0.8),
                       fontSize: 13,
                     ),
                   ),
                 );
-              }).toList(),
+              }),
               const SizedBox(height: 12),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -470,7 +402,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   Text(
                     'Total Amount',
                     style: TextStyle(
-                      color: _textColor.withOpacity(0.6),
+                      color: _textColor.withValues(alpha: 0.6),
                       fontSize: 13,
                     ),
                   ),
@@ -490,6 +422,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   width: double.infinity,
                   child: OutlinedButton(
                     onPressed: () async {
+                      final messenger = ScaffoldMessenger.of(context);
                       final confirm = await showDialog<bool>(
                         context: context,
                         builder: (context) => AlertDialog(
@@ -520,7 +453,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               .doc(docs[index].id)
                               .delete();
                           if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
+                            messenger.showSnackBar(
                               const SnackBar(
                                 content: Text('Order cancelled and removed'),
                               ),
@@ -528,7 +461,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           }
                         } catch (e) {
                           if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
+                            messenger.showSnackBar(
                               SnackBar(
                                 content: Text('Failed to cancel order: $e'),
                               ),
@@ -568,7 +501,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               fit: BoxFit.cover,
               colorFilter: ColorFilter.mode(
-                Colors.black.withOpacity(0.6),
+                Colors.black.withValues(alpha: 0.6),
                 BlendMode.darken,
               ),
             ),
@@ -617,7 +550,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 'Best shops in your city delivering to your doorstep',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.9),
+                  color: Colors.white.withValues(alpha: 0.9),
                   fontSize: 16,
                 ),
               ),
@@ -753,7 +686,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         : _cardColor,
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: _lightBlue.withOpacity(0.3),
+                      color: _lightBlue.withValues(alpha: 0.3),
                       width: 1,
                     ),
                   ),
@@ -841,13 +774,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           shape: BoxShape.circle,
                           border: isSelected
                               ? Border.all(
-                                  color: _lightBlue.withOpacity(0.3),
+                                  color: _lightBlue.withValues(alpha: 0.3),
                                   width: 4,
                                 )
                               : null,
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.05),
+                              color: Colors.black.withValues(alpha: 0.05),
                               blurRadius: 10,
                               offset: const Offset(0, 4),
                             ),
@@ -909,7 +842,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
+            color: Colors.black.withValues(alpha: 0.08),
             blurRadius: 12,
             spreadRadius: 2,
             offset: const Offset(0, 6),
@@ -949,7 +882,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         borderRadius: BorderRadius.circular(6),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.redAccent.withOpacity(0.4),
+                            color: Colors.redAccent.withValues(alpha: 0.4),
                             blurRadius: 4,
                             offset: const Offset(0, 2),
                           ),
@@ -1052,7 +985,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           decoration: BoxDecoration(
                             color: isOutOfStock
                                 ? Colors.grey.shade300
-                                : _lightBlue.withOpacity(0.15),
+                                : _lightBlue.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Center(
@@ -1105,7 +1038,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 ? []
                                 : [
                                     BoxShadow(
-                                      color: _lightBlue.withOpacity(0.3),
+                                      color: _lightBlue.withValues(alpha: 0.3),
                                       blurRadius: 4,
                                       offset: const Offset(0, 2),
                                     ),
@@ -1140,7 +1073,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         color: _cardColor,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, -5),
           ),
@@ -1152,7 +1085,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         type: BottomNavigationBarType.fixed,
         currentIndex: _selectedIndex,
         selectedItemColor: _lightBlue,
-        unselectedItemColor: _textColor.withOpacity(0.4),
+        unselectedItemColor: _textColor.withValues(alpha: 0.4),
         selectedLabelStyle: const TextStyle(
           fontWeight: FontWeight.bold,
           fontSize: 12,

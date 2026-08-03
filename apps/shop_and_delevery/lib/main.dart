@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -9,17 +10,20 @@ import 'screens/delevery_partner/delivery_partner_dashboard.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Firebase using the provided web configuration
-  await Firebase.initializeApp(
-    options: const FirebaseOptions(
-      apiKey: "AIzaSyAXQCoKtyg22kE-00mzzaf8znQ8SrIYtJ0",
-      authDomain: "oceankart-83bbd.firebaseapp.com",
-      projectId: "oceankart-83bbd",
-      storageBucket: "oceankart-83bbd.firebasestorage.app",
-      messagingSenderId: "234759726531",
-      appId: "1:234759726531:web:9e94c9af87234da3a48976",
-    ),
-  );
+  if (kIsWeb) {
+    await Firebase.initializeApp(
+      options: const FirebaseOptions(
+        apiKey: "AIzaSyAXQCoKtyg22kE-00mzzaf8znQ8SrIYtJ0",
+        authDomain: "oceankart-83bbd.firebaseapp.com",
+        projectId: "oceankart-83bbd",
+        storageBucket: "oceankart-83bbd.firebasestorage.app",
+        messagingSenderId: "234759726531",
+        appId: "1:234759726531:web:9e94c9af87234da3a48976",
+      ),
+    );
+  } else {
+    await Firebase.initializeApp();
+  }
 
   runApp(const MyApp());
 }

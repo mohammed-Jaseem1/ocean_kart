@@ -126,7 +126,7 @@ class _ProductManagementScreenState extends State<ProductManagementScreen> {
                       margin: const EdgeInsets.only(bottom: 12),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
-                        side: BorderSide(color: Colors.black.withOpacity(0.05)),
+                        side: BorderSide(color: Colors.black.withValues(alpha: 0.05)),
                       ),
                       child: ListTile(
                         contentPadding: const EdgeInsets.all(12),
@@ -135,7 +135,7 @@ class _ProductManagementScreenState extends State<ProductManagementScreen> {
                           height: 50,
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(8),
-                            color: Colors.black.withOpacity(0.05),
+                            color: Colors.black.withValues(alpha: 0.05),
                             image: data['imageUrl'] != null
                                 ? DecorationImage(
                                     image: data['imageUrl'].startsWith('http')

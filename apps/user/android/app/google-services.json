@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "234759726531",
+    "project_id": "oceankart-83bbd",
+    "storage_bucket": "oceankart-83bbd.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:234759726531:android:be40ea72e4d3d555a48976",
+        "android_client_info": {
+          "package_name": "com.oceankartUser"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "234759726531-91bp5hlldel4rn0v3vaka9o31of2tpln.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCbF-b8xCVV6QI8UXdMe-w5dohyjGcUgSo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "234759726531-91bp5hlldel4rn0v3vaka9o31of2tpln.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
