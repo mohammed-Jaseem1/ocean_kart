@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "234759726531-8f6qtvuhd95dnp9okko8mj2bt66sj5sg.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.oceankartUser",
+            "certificate_hash": "82fa5b2f7eeaf0b73df19309c8d35d68e0b52c22"
+          }
+        },
+        {
           "client_id": "234759726531-91bp5hlldel4rn0v3vaka9o31of2tpln.apps.googleusercontent.com",
           "client_type": 3
         }

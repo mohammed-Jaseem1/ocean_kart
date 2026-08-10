@@ -1,16 +1,8 @@
 import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-
-class _PhoneVerificationCancelled implements Exception {
-  const _PhoneVerificationCancelled();
-
-  @override
-  String toString() => 'Phone verification was cancelled.';
-}
 
 class UserRegistrationPage extends StatefulWidget {
   const UserRegistrationPage({super.key});
@@ -50,26 +42,26 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
     });
 
     try {
-      final String email = _emailController.text.trim();
-      final String password = _passwordController.text;
       final String phone = '+91${_mobileController.text.trim()}';
 
-      // Step 1: Verify the entered mobile number via OTP
+      // Step 1: Send OTP and verify phone
       final PhoneAuthCredential phoneCredential = await _verifyPhone(phone);
 
-      // Step 2: Sign in with the verified phone credential
-      final UserCredential userCredential =
+      // Step 2: Sign in temporarily with phone to get a UID
+      final UserCredential phoneUser =
           await FirebaseAuth.instance.signInWithCredential(phoneCredential);
 
-      // Step 3: Link email & password so the same account can log in with either method
-      await userCredential.user!.linkWithCredential(
+      final String uid = phoneUser.user!.uid;
+
+      // Step 3: Link email & password to this account
+      final String email = _emailController.text.trim();
+      final String password = _passwordController.text;
+      await phoneUser.user!.linkWithCredential(
         EmailAuthProvider.credential(email: email, password: password),
       );
 
-      final String uid = userCredential.user!.uid;
-
-      // Step 4: Save user data
-      final Map<String, dynamic> userData = {
+      // Step 4: Save user data to Firestore
+      await FirebaseFirestore.instance.collection('users').doc(uid).set({
         'uid': uid,
         'role': 'customer',
         'name': _nameController.text.trim(),
@@ -77,13 +69,9 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
         'email': email,
         'address': _addressController.text.trim(),
         'createdAt': FieldValue.serverTimestamp(),
-        'status': 'active', // Customers are active immediately
-      };
+        'status': 'active',
+      });
 
-      // Save to Firestore
-      await FirebaseFirestore.instance.collection('users').doc(uid).set(userData);
-
-      // Keep the user signed in so AuthGate routes them straight to the dashboard.
       if (mounted) {
         showDialog(
           context: context,
@@ -131,11 +119,10 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
           },
         );
 
-        // Automatically close dialog and land on the dashboard after 2 seconds
         Future.delayed(const Duration(seconds: 2), () {
           if (mounted) {
-            Navigator.of(context).pop(); // Close dialog
-            Navigator.of(context).pop(); // Close registration; AuthGate shows dashboard
+            Navigator.of(context).pop();
+            Navigator.of(context).pop();
           }
         });
       }
@@ -147,7 +134,7 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
       } else if (e.code == 'email-already-in-use' ||
           e.code == 'provider-already-linked' ||
           e.code == 'account-exists-with-different-credential') {
-        errorMessage = 'An account already exists for that email or mobile number.';
+        errorMessage = 'An account already exists for that email or phone number.';
       } else if (e.code == 'invalid-phone-number') {
         errorMessage = 'Please enter a valid mobile number.';
       } else if (e.code == 'invalid-verification-code' ||
@@ -183,21 +170,17 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
     await FirebaseAuth.instance.verifyPhoneNumber(
       phoneNumber: phoneNumber,
       verificationCompleted: (PhoneAuthCredential credential) {
-        if (!completer.isCompleted) {
-          completer.complete(credential);
-        }
+        if (!completer.isCompleted) completer.complete(credential);
       },
       verificationFailed: (FirebaseAuthException e) {
-        if (!completer.isCompleted) {
-          completer.completeError(e);
-        }
+        if (!completer.isCompleted) completer.completeError(e);
       },
       codeSent: (String verificationId, int? resendToken) async {
         final String? otp = await _showOtpDialog();
         if (otp == null || otp.isEmpty) {
-          if (!completer.isCompleted) {
-            completer.completeError(const _PhoneVerificationCancelled());
-          }
+          if (!completer.isCompleted) completer.completeError(
+            Exception('OTP verification was cancelled.'),
+          );
           return;
         }
         if (!completer.isCompleted) {
