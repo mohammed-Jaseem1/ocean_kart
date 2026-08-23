@@ -378,19 +378,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0.5,
         title: const Text(
           'Secure Checkout',
           style: TextStyle(
-            color: Color(0xFF0A1628),
+            color: Color(0xFF0F172A),
             fontWeight: FontWeight.w800,
             fontSize: 20,
           ),
         ),
-        iconTheme: const IconThemeData(color: Color(0xFF0A1628)),
+        iconTheme: const IconThemeData(color: Color(0xFF0F172A)),
         centerTitle: true,
       ),
       body: _isLoadingItems
@@ -407,14 +407,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     padding: const EdgeInsets.all(24),
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
-                        colors: [Color(0xFF0A1628), Color(0xFF1E3A5F)],
+                        colors: [Color(0xFF00B4D8), Color(0xFF0077B6)],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF0A1628).withValues(alpha: 0.3),
+                          color: const Color(0xFF00B4D8).withValues(alpha: 0.3),
                           blurRadius: 15,
                           offset: const Offset(0, 8),
                         ),
@@ -463,7 +463,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w800,
-                          color: Color(0xFF0A1628),
+                          color: Color(0xFF0F172A),
                         ),
                       ),
                       TextButton.icon(
@@ -690,7 +690,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     children: [
                       Icon(
                         Icons.location_on,
-                        color: Color(0xFF0A1628),
+                        color: Color(0xFF0F172A),
                         size: 22,
                       ),
                       SizedBox(width: 8),
@@ -699,7 +699,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w800,
-                          color: Color(0xFF0A1628),
+                          color: Color(0xFF0F172A),
                         ),
                       ),
                     ],
@@ -815,14 +815,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
                   const Row(
                     children: [
-                      Icon(Icons.payment, color: Color(0xFF0A1628), size: 22),
+                      Icon(Icons.payment, color: Color(0xFF0F172A), size: 22),
                       SizedBox(width: 8),
                       Text(
                         'Payment Method',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w800,
-                          color: Color(0xFF0A1628),
+                          color: Color(0xFF0F172A),
                         ),
                       ),
                     ],
@@ -870,7 +870,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                 style: TextStyle(
                                   fontWeight: FontWeight.w800,
                                   fontSize: 16,
-                                  color: Color(0xFF0A1628),
+                                  color: Color(0xFF0F172A),
                                 ),
                               ),
                               SizedBox(height: 4),

@@ -11,10 +11,10 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  final Color _navyBlue = const Color(0xFFF5F7FA);
+  final Color _navyBlue = const Color(0xFFF8FAFC);
   final Color _cardColor = Colors.white;
   final Color _lightBlue = const Color(0xFF00B4D8);
-  final Color _textColor = const Color(0xFF0A1628);
+  final Color _textColor = const Color(0xFF0F172A);
 
   Map<String, dynamic>? userData;
   bool _isLoading = true;

@@ -19,9 +19,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   bool _isSaving = false;
 
-  final Color _navyBlue = const Color(0xFFF5F7FA);
+  final Color _navyBlue = const Color(0xFFF8FAFC);
   final Color _lightBlue = const Color(0xFF00B4D8);
-  final Color _textColor = const Color(0xFF0A1628);
+  final Color _textColor = const Color(0xFF0F172A);
 
   @override
   void initState() {

@@ -19,10 +19,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String _selectedCategory = '';
   String _selectedShopId = '';
 
-  final Color _navyBlue = const Color(0xFFF5F7FA);
+  final Color _navyBlue = const Color(0xFFF8FAFC);
   final Color _cardColor = Colors.white;
   final Color _lightBlue = const Color(0xFF00B4D8);
-  final Color _textColor = const Color(0xFF0A1628);
+  final Color _textColor = const Color(0xFF0F172A);
 
   // Mock Data
   final List<Map<String, dynamic>> _categories = [
@@ -340,13 +340,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           decoration: BoxDecoration(
             color: _cardColor,
             borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.02),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
+            border: Border.all(color: const Color(0xFFE2E8F0)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -836,18 +830,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final bool isOutOfStock = stockQuantity <= 0;
 
     return Container(
-      margin: const EdgeInsets.all(4), // Floating margin
+      margin: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: _cardColor,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 12,
-            spreadRadius: 2,
-            offset: const Offset(0, 6),
-          ),
-        ],
+        border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -857,7 +844,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: Stack(
               children: [
                 Container(
-                  color: _navyBlue,
+                  color: const Color(0xFFF1F5F9),
                   width: double.infinity,
                   height: double.infinity,
                   child: imageUrl != null && imageUrl.isNotEmpty

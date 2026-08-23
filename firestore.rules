@@ -1,0 +1,53 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper function to check if caller is an admin
+    function isAdmin() {
+      return isAuthenticated() && (
+        exists(/databases/$(database)/documents/admin/$(request.auth.uid)) ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+      );
+    }
+
+    // Admin Collection: Read & write for authenticated users
+    match /admin/{adminId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /admins/{adminId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Users Collection: Users can read/write their own document; Admins can read/write all
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && request.auth.uid == userId;
+      allow write, delete: if isAdmin();
+    }
+
+    // Orders Collection: Authenticated users & admins can read/write
+    match /orders/{orderId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Products / Inventory Collections: Authenticated users can read; Partners & Admins can write
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    match /inventory/{itemId} {
+      allow read, write: if isAuthenticated();
+    }
+  }
+}

@@ -1,0 +1,4 @@
+This is an fish buying applciation ok
+There is 4 module of suer admin who suwpervise all
+They ahev a login of email apssword which set in firsbase  okk, admin is the oen who oevrveiw all rpofcess and who approev and maneg the suers , shop owners, delivery boys okk , shop owners and delivery boys need to register first then the amdin approve then only they can operate  okk ,on onbaoridng of all we need verifiy theere emaila dn phonenumbe ralos we need to fetch there location too, for users need to enter there delievry addres too manually okk l for sghopowners there shop addres to , on email evrifictaionw e sue firebase passowrdless one okk it will get send into email once verified we need to sav eisemilverified field oto okk, gogole login works only fi email is verified ,e lse gogole logi s supported but ti redirect to register form okk , 
+

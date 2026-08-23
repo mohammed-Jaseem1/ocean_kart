@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../services/otp_service.dart';
 
 class UserRegistrationPage extends StatefulWidget {
   const UserRegistrationPage({super.key});
@@ -14,7 +15,6 @@ class UserRegistrationPage extends StatefulWidget {
 class _UserRegistrationPageState extends State<UserRegistrationPage> {
   final _formKey = GlobalKey<FormState>();
 
-  // Personal Details
   final _nameController = TextEditingController();
   final _mobileController = TextEditingController();
   final _emailController = TextEditingController();
@@ -23,6 +23,9 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
 
   bool _obscurePassword = true;
   bool _isLoading = false;
+  bool _isPhoneVerified = false;
+  bool _isSendingOtp = false;
+  String? _profileImageUrl;
 
   @override
   void dispose() {
@@ -34,42 +37,394 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
     super.dispose();
   }
 
+  Future<void> _pickProfileImage() async {
+    final List<String> presetAvatars = [
+      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
+      'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80',
+      'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=200&q=80',
+      'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=200&q=80',
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Choose Profile Photo',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Select a preset avatar photo for your account',
+                style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: presetAvatars.map((url) {
+                  final isSelected = _profileImageUrl == url;
+                  return GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _profileImageUrl = url;
+                      });
+                      Navigator.pop(context);
+                    },
+                    child: Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: isSelected
+                            ? Border.all(color: const Color(0xFF00B4D8), width: 3)
+                            : null,
+                      ),
+                      child: CircleAvatar(
+                        radius: 28,
+                        backgroundImage: NetworkImage(url),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 20),
+              if (_profileImageUrl != null)
+                TextButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _profileImageUrl = null;
+                    });
+                    Navigator.pop(context);
+                  },
+                  icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
+                  label: const Text('Remove Photo', style: TextStyle(color: Colors.redAccent)),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _handleSendOtp() async {
+    final rawPhone = _mobileController.text.trim();
+    if (rawPhone.isEmpty || !RegExp(r'^[6-9]\d{9}$').hasMatch(rawPhone)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a valid 10-digit mobile number first.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isSendingOtp = true;
+    });
+
+    try {
+      final response = await OtpService.sendOtp(rawPhone);
+
+      if (response['type'] == 'error') {
+        final errMsg = response['message']?.toString() ?? 'Failed to send OTP.';
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(errMsg), backgroundColor: Colors.redAccent),
+          );
+        }
+        return;
+      }
+
+      if (response.containsKey('access-token')) {
+        setState(() {
+          _isPhoneVerified = true;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Mobile number auto-verified via network!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+        return;
+      }
+
+      final String reqId = OtpService.currentReqId ??
+          response['reqId']?.toString() ??
+          response['message']?.toString() ??
+          '';
+
+      if (!mounted) return;
+      final bool? isVerified = await _showOtpDialog(reqId, rawPhone);
+
+      if (isVerified == true) {
+        setState(() {
+          _isPhoneVerified = true;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Mobile number verified successfully!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to send OTP: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSendingOtp = false;
+        });
+      }
+    }
+  }
+
+  Future<bool?> _showOtpDialog(String reqId, String mobileNumber) async {
+    final TextEditingController otpController = TextEditingController();
+    bool isVerifying = false;
+    String? dialogError;
+
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: const Text(
+                'Enter OTP',
+                style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Enter the verification code sent to +91 $mobileNumber',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Color(0xFF64748B),
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  if (dialogError != null) ...[
+                    Text(
+                      dialogError!,
+                      style: TextStyle(
+                        color: dialogError!.contains('successfully') || dialogError!.contains('Verified')
+                            ? Colors.green
+                            : Colors.redAccent,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  TextField(
+                    controller: otpController,
+                    autofocus: true,
+                    style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold),
+                    keyboardType: TextInputType.number,
+                    maxLength: 6,
+                    decoration: const InputDecoration(
+                      hintText: 'Enter OTP',
+                      hintStyle: TextStyle(
+                        color: Color(0xFF94A3B8),
+                      ),
+                      enabledBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: Color(0xFFCBD5E1)),
+                      ),
+                      focusedBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: Color(0xFF00B4D8), width: 2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: isVerifying
+                        ? null
+                        : () async {
+                            try {
+                              final retryRes = await OtpService.retryOtp(
+                                reqId: reqId,
+                                retryChannel: 11,
+                              );
+                              if (retryRes['type'] == 'error') {
+                                setDialogState(() {
+                                  dialogError = retryRes['message']?.toString() ??
+                                      'Failed to resend OTP.';
+                                });
+                              } else {
+                                setDialogState(() {
+                                  dialogError = 'Resent OTP successfully!';
+                                });
+                              }
+                            } catch (e) {
+                              setDialogState(() {
+                                dialogError = 'Failed to resend OTP: $e';
+                              });
+                            }
+                          },
+                    child: const Text(
+                      'Resend OTP via SMS',
+                      style: TextStyle(
+                        color: Color(0xFF00B4D8),
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isVerifying
+                      ? null
+                      : () => Navigator.pop(context, false),
+                  child: const Text(
+                    'Cancel',
+                    style: TextStyle(color: Color(0xFF64748B)),
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: isVerifying
+                      ? null
+                      : () async {
+                          final otp = otpController.text.trim();
+                          if (otp.isEmpty) {
+                            setDialogState(() {
+                              dialogError = 'Please enter OTP';
+                            });
+                            return;
+                          }
+                          setDialogState(() {
+                            isVerifying = true;
+                            dialogError = null;
+                          });
+                          try {
+                            final result = await OtpService.verifyOtp(
+                              otp: otp,
+                              reqId: reqId,
+                            );
+                            if (result['type'] == 'error') {
+                              setDialogState(() {
+                                isVerifying = false;
+                                dialogError = result['message']?.toString() ??
+                                    'Invalid OTP or verification error.';
+                              });
+                            } else if (context.mounted) {
+                              setDialogState(() {
+                                isVerifying = false;
+                                dialogError = 'Verified successfully!';
+                              });
+                              await Future.delayed(const Duration(milliseconds: 600));
+                              if (context.mounted) {
+                                Navigator.pop(context, true);
+                              }
+                            }
+                          } catch (e) {
+                            setDialogState(() {
+                              isVerifying = false;
+                              dialogError = 'Invalid OTP or verification error.';
+                            });
+                          }
+                        },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF00B4D8),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  child: isVerifying
+                      ? const SizedBox(
+                          height: 16,
+                          width: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation(
+                              Colors.white,
+                            ),
+                          ),
+                        )
+                      : const Text('Verify', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+
+    if (!_isPhoneVerified) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please click "Send OTP" and verify your mobile number first.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
 
     setState(() {
       _isLoading = true;
     });
 
     try {
-      final String phone = '+91${_mobileController.text.trim()}';
-
-      // Step 1: Send OTP and verify phone
-      final PhoneAuthCredential phoneCredential = await _verifyPhone(phone);
-
-      // Step 2: Sign in temporarily with phone to get a UID
-      final UserCredential phoneUser =
-          await FirebaseAuth.instance.signInWithCredential(phoneCredential);
-
-      final String uid = phoneUser.user!.uid;
-
-      // Step 3: Link email & password to this account
+      final String rawPhone = _mobileController.text.trim();
       final String email = _emailController.text.trim();
       final String password = _passwordController.text;
-      await phoneUser.user!.linkWithCredential(
-        EmailAuthProvider.credential(email: email, password: password),
-      );
 
-      // Step 4: Save user data to Firestore
+      // Step 1: Create user with Email & Password
+      final UserCredential userCredential = await FirebaseAuth.instance
+          .createUserWithEmailAndPassword(email: email, password: password);
+
+      final User? user = userCredential.user;
+      final String uid = user!.uid;
+
+      // Step 2: Send Email Verification link
+      await user.sendEmailVerification();
+
+      // Step 3: Save user data to Firestore
       await FirebaseFirestore.instance.collection('users').doc(uid).set({
         'uid': uid,
         'role': 'customer',
         'name': _nameController.text.trim(),
-        'mobileNumber': _mobileController.text.trim(),
+        'mobileNumber': rawPhone,
         'email': email,
         'address': _addressController.text.trim(),
+        'photoUrl': _profileImageUrl ?? '',
+        'phoneVerified': true,
+        'emailVerified': false,
         'createdAt': FieldValue.serverTimestamp(),
-        'status': 'active',
+        'status': 'pending_email_verification',
       });
 
       if (mounted) {
@@ -78,38 +433,69 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
           barrierDismissible: false,
           builder: (BuildContext context) {
             return Dialog(
-              alignment: Alignment.topCenter,
-              insetPadding: const EdgeInsets.only(top: 60, left: 24, right: 24),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
               ),
-              backgroundColor: const Color(0xFF132238),
+              backgroundColor: Colors.white,
               child: Padding(
                 padding: const EdgeInsets.all(24.0),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(
-                      Icons.check_circle_outline,
-                      color: Colors.greenAccent,
-                      size: 64,
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF00B4D8).withValues(alpha: 0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.mark_email_read_outlined,
+                        color: Color(0xFF00B4D8),
+                        size: 48,
+                      ),
                     ),
                     const SizedBox(height: 16),
                     const Text(
-                      'Welcome to OceanKart!',
+                      'Verify Your Email',
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                        color: Color(0xFF0F172A),
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 12),
                     Text(
-                      'Your account has been created successfully. You are now logged in!',
+                      'A verification link has been sent to:\n$email\n\nPlease check your email inbox and click the link to verify your account.',
                       textAlign: TextAlign.center,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 14,
-                        color: Colors.white.withValues(alpha: 0.7),
+                        color: Color(0xFF64748B),
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          Navigator.of(context).pop();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF00B4D8),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text(
+                          'OK, Go to Login',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
                     ),
                   ],
@@ -118,28 +504,13 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
             );
           },
         );
-
-        Future.delayed(const Duration(seconds: 2), () {
-          if (mounted) {
-            Navigator.of(context).pop();
-            Navigator.of(context).pop();
-          }
-        });
       }
     } on FirebaseAuthException catch (e) {
-      await FirebaseAuth.instance.signOut();
       String errorMessage = 'An error occurred during registration.';
       if (e.code == 'weak-password') {
         errorMessage = 'The password provided is too weak.';
-      } else if (e.code == 'email-already-in-use' ||
-          e.code == 'provider-already-linked' ||
-          e.code == 'account-exists-with-different-credential') {
-        errorMessage = 'An account already exists for that email or phone number.';
-      } else if (e.code == 'invalid-phone-number') {
-        errorMessage = 'Please enter a valid mobile number.';
-      } else if (e.code == 'invalid-verification-code' ||
-          e.code == 'invalid-verification-id') {
-        errorMessage = 'Invalid OTP. Please try again.';
+      } else if (e.code == 'email-already-in-use') {
+        errorMessage = 'An account already exists for that email address.';
       } else {
         errorMessage = e.message ?? errorMessage;
       }
@@ -149,7 +520,6 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
         );
       }
     } catch (e) {
-      await FirebaseAuth.instance.signOut();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(e.toString()), backgroundColor: Colors.redAccent),
@@ -162,117 +532,6 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
         });
       }
     }
-  }
-
-  Future<PhoneAuthCredential> _verifyPhone(String phoneNumber) async {
-    final Completer<PhoneAuthCredential> completer = Completer<PhoneAuthCredential>();
-
-    await FirebaseAuth.instance.verifyPhoneNumber(
-      phoneNumber: phoneNumber,
-      verificationCompleted: (PhoneAuthCredential credential) {
-        if (!completer.isCompleted) completer.complete(credential);
-      },
-      verificationFailed: (FirebaseAuthException e) {
-        if (!completer.isCompleted) completer.completeError(e);
-      },
-      codeSent: (String verificationId, int? resendToken) async {
-        final String? otp = await _showOtpDialog();
-        if (otp == null || otp.isEmpty) {
-          if (!completer.isCompleted) completer.completeError(
-            Exception('OTP verification was cancelled.'),
-          );
-          return;
-        }
-        if (!completer.isCompleted) {
-          completer.complete(
-            PhoneAuthProvider.credential(verificationId: verificationId, smsCode: otp),
-          );
-        }
-      },
-      codeAutoRetrievalTimeout: (String verificationId) {},
-    );
-
-    return completer.future;
-  }
-
-  Future<String?> _showOtpDialog() async {
-    final TextEditingController otpController = TextEditingController();
-    return showDialog<String>(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF132238),
-          title: const Text('Enter OTP', style: TextStyle(color: Colors.white)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Enter the 6-digit code sent to your mobile number',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 13),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: otpController,
-                autofocus: true,
-                style: const TextStyle(color: Colors.white),
-                keyboardType: TextInputType.number,
-                maxLength: 6,
-                decoration: InputDecoration(
-                  hintText: '123456',
-                  hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
-                  enabledBorder: const UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white),
-                  ),
-                  focusedBorder: const UnderlineInputBorder(
-                    borderSide: BorderSide(color: Color(0xFF00B4D8)),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, otpController.text.trim()),
-              child: const Text('Verify', style: TextStyle(color: Color(0xFF00B4D8))),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildSectionHeader(String title, {IconData? icon}) {
-    const primaryBlue = Color(0xFF00B4D8);
-    return Padding(
-      padding: const EdgeInsets.only(top: 24.0, bottom: 16.0),
-      child: Row(
-        children: [
-          if (icon != null) ...[
-            Icon(icon, color: primaryBlue, size: 22),
-            const SizedBox(width: 10),
-          ],
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-              letterSpacing: 0.5,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Divider(color: Colors.white.withValues(alpha: 0.1), thickness: 1),
-          ),
-        ],
-      ),
-    );
   }
 
   Widget _buildTextField({
@@ -288,55 +547,94 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
     String? Function(String?)? customValidator,
   }) {
     const primaryBlue = Color(0xFF00B4D8);
-    const darkBackground = Color(0xFF0A1628);
+    const textColor = Color(0xFF0F172A);
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16.0),
+      padding: const EdgeInsets.only(bottom: 12.0),
       child: TextFormField(
         controller: controller,
-        style: const TextStyle(color: Colors.white),
+        style: const TextStyle(color: textColor, fontWeight: FontWeight.w500),
         obscureText: obscureText,
         keyboardType: isEmail
             ? TextInputType.emailAddress
             : isPhone
                 ? TextInputType.phone
                 : TextInputType.text,
-        inputFormatters: isPhone ? [
-          FilteringTextInputFormatter.digitsOnly,
-          LengthLimitingTextInputFormatter(10),
-        ] : null,
+        inputFormatters: isPhone
+            ? [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(10),
+              ]
+            : null,
         decoration: InputDecoration(
           labelText: label + (isRequired ? ' *' : ''),
-          labelStyle: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
+          labelStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 14),
           prefixText: isPhone ? '+91 ' : null,
-          prefixStyle: isPhone ? const TextStyle(color: Colors.white, fontSize: 16) : null,
-          prefixIcon: Icon(icon, color: primaryBlue.withValues(alpha: 0.8)),
-          suffixIcon: isPassword
-              ? IconButton(
-                  icon: Icon(
-                    obscureText ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-                    color: Colors.white.withValues(alpha: 0.6),
-                  ),
-                  onPressed: onToggleObscure,
-                )
-              : null,
+          prefixStyle: isPhone ? const TextStyle(color: textColor, fontSize: 15, fontWeight: FontWeight.w500) : null,
+          prefixIcon: Icon(icon, color: primaryBlue, size: 20),
+          suffixIcon: isPhone
+              ? (_isPhoneVerified
+                  ? Container(
+                      margin: const EdgeInsets.all(8),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.check_circle, color: Colors.green, size: 16),
+                          SizedBox(width: 4),
+                          Text('Verified', style: TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    )
+                  : Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: TextButton(
+                        onPressed: _isSendingOtp ? null : _handleSendOtp,
+                        style: TextButton.styleFrom(
+                          foregroundColor: primaryBlue,
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                        ),
+                        child: _isSendingOtp
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: primaryBlue),
+                              )
+                            : const Text(
+                                'Send OTP',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                              ),
+                      ),
+                    ))
+              : isPassword
+                  ? IconButton(
+                      icon: Icon(
+                        obscureText ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                        color: const Color(0xFF64748B),
+                        size: 20,
+                      ),
+                      onPressed: onToggleObscure,
+                    )
+                  : null,
           filled: true,
-          fillColor: darkBackground.withValues(alpha: 0.5),
+          fillColor: Colors.white,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+            borderSide: const BorderSide(color: Color(0xFFCBD5E1), width: 1),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: primaryBlue),
+            borderSide: const BorderSide(color: primaryBlue, width: 1.5),
           ),
           errorBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Colors.redAccent),
-          ),
-          focusedErrorBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Colors.redAccent, width: 2),
+            borderSide: const BorderSide(color: Colors.redAccent, width: 1),
           ),
         ),
         validator: customValidator ??
@@ -363,143 +661,175 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
   @override
   Widget build(BuildContext context) {
     const primaryBlue = Color(0xFF00B4D8);
-    const darkBackground = Color(0xFF0A1628);
-    const cardColor = Color(0xFF132238);
+    const textColor = Color(0xFF0F172A);
 
     return Scaffold(
-      backgroundColor: darkBackground,
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: Colors.white,
         elevation: 0,
         title: const Text(
           'Customer Registration',
           style: TextStyle(
-            color: Colors.white,
+            color: textColor,
             fontWeight: FontWeight.bold,
           ),
         ),
-        iconTheme: const IconThemeData(color: Colors.white),
+        iconTheme: const IconThemeData(color: textColor),
       ),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 600),
-            child: Card(
-              color: cardColor,
-              elevation: 8,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-                side: BorderSide(
-                  color: Colors.white.withValues(alpha: 0.05),
-                  width: 1,
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+          child: Align(
+            heightFactor: 1.0,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 550),
+              child: SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: ElevatedButton(
+                  onPressed: _isLoading ? null : _submit,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primaryBlue,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    elevation: 2,
+                    shadowColor: primaryBlue.withValues(alpha: 0.3),
+                  ),
+                  child: _isLoading
+                      ? const SizedBox(
+                          height: 22,
+                          width: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : const Text(
+                          'Register Account',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
                 ),
               ),
-              child: Padding(
-                padding: const EdgeInsets.all(32.0),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const Text(
-                        'Create your OceanKart Account',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Join us and start shopping for fresh items',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.white.withValues(alpha: 0.6),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Personal Details Section
-                      _buildSectionHeader('Personal Details', icon: Icons.person_outline),
-                      _buildTextField(
-                        controller: _nameController,
-                        label: 'Full Name',
-                        icon: Icons.badge_outlined,
-                        isRequired: true,
-                      ),
-                      _buildTextField(
-                        controller: _mobileController,
-                        label: 'Mobile Number',
-                        icon: Icons.phone_android_outlined,
-                        isRequired: true,
-                        isPhone: true,
-                      ),
-                      _buildTextField(
-                        controller: _emailController,
-                        label: 'Email Address',
-                        icon: Icons.email_outlined,
-                        isRequired: true,
-                        isEmail: true,
-                      ),
-                      _buildTextField(
-                        controller: _addressController,
-                        label: 'Delivery Address',
-                        icon: Icons.location_on_outlined,
-                        isRequired: true,
-                      ),
-                      _buildTextField(
-                        controller: _passwordController,
-                        label: 'Password',
-                        icon: Icons.lock_outline,
-                        isRequired: true,
-                        isPassword: true,
-                        obscureText: _obscurePassword,
-                        onToggleObscure: () => setState(() => _obscurePassword = !_obscurePassword),
-                        customValidator: (value) {
-                          if (value == null || value.isEmpty) return 'Password is required';
-                          if (value.length < 6) return 'Password must be at least 6 characters';
-                          return null;
-                        },
-                      ),
-
-                      const SizedBox(height: 32),
-
-                      // Submit Button
-                      ElevatedButton(
-                        onPressed: _isLoading ? null : _submit,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: primaryBlue,
-                          foregroundColor: darkBackground,
-                          padding: const EdgeInsets.symmetric(vertical: 18),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        ),
+      ),
+      body: Align(
+        alignment: Alignment.topCenter,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 550),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Optional Profile Picture Picker
+                  Center(
+                    child: GestureDetector(
+                      onTap: _pickProfileImage,
+                      child: Stack(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(3),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(color: primaryBlue.withValues(alpha: 0.3), width: 2),
+                            ),
+                            child: CircleAvatar(
+                              radius: 38,
+                              backgroundColor: const Color(0xFFF1F5F9),
+                              backgroundImage: _profileImageUrl != null && _profileImageUrl!.isNotEmpty
+                                  ? NetworkImage(_profileImageUrl!) as ImageProvider
+                                  : null,
+                              child: _profileImageUrl == null || _profileImageUrl!.isEmpty
+                                  ? const Icon(Icons.person_rounded, size: 42, color: primaryBlue)
+                                  : null,
+                            ),
                           ),
-                          elevation: 2,
-                        ),
-                        child: _isLoading
-                            ? const SizedBox(
-                                height: 24,
-                                width: 24,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 3,
-                                  valueColor: AlwaysStoppedAnimation<Color>(darkBackground),
-                                ),
-                              )
-                            : const Text(
-                                'Register Account',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: 0.5,
-                                ),
+                          Positioned(
+                            bottom: 0,
+                            right: 0,
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: const BoxDecoration(
+                                color: primaryBlue,
+                                shape: BoxShape.circle,
                               ),
+                              child: const Icon(
+                                Icons.camera_alt_rounded,
+                                size: 14,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 4),
+                  const Center(
+                    child: Text(
+                      'Add Profile Photo',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF64748B),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  _buildTextField(
+                    controller: _nameController,
+                    label: 'Full Name',
+                    icon: Icons.badge_outlined,
+                    isRequired: true,
+                  ),
+                  _buildTextField(
+                    controller: _mobileController,
+                    label: 'Mobile Number',
+                    icon: Icons.phone_android_outlined,
+                    isRequired: true,
+                    isPhone: true,
+                  ),
+                  _buildTextField(
+                    controller: _emailController,
+                    label: 'Email Address',
+                    icon: Icons.email_outlined,
+                    isRequired: true,
+                    isEmail: true,
+                  ),
+                  _buildTextField(
+                    controller: _addressController,
+                    label: 'Delivery Address',
+                    icon: Icons.location_on_outlined,
+                    isRequired: true,
+                  ),
+                  _buildTextField(
+                    controller: _passwordController,
+                    label: 'Password',
+                    icon: Icons.lock_outline,
+                    isRequired: true,
+                    isPassword: true,
+                    obscureText: _obscurePassword,
+                    onToggleObscure: () => setState(() => _obscurePassword = !_obscurePassword),
+                    customValidator: (value) {
+                      if (value == null || value.isEmpty) return 'Password is required';
+                      if (value.length < 6) return 'Password must be at least 6 characters';
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                ],
               ),
             ),
           ),

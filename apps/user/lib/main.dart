@@ -5,11 +5,14 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/dashboard_screen.dart';
+import 'services/otp_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  OtpService.initialize();
 
   if (kIsWeb) {
+
     await Firebase.initializeApp(
       options: const FirebaseOptions(
         apiKey: "AIzaSyAXQCoKtyg22kE-00mzzaf8znQ8SrIYtJ0",
@@ -33,18 +36,37 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const primaryBlue = Color(0xFF00B4D8);
-    const darkBackground = Color(0xFF0A1628);
+    const lightBackground = Color(0xFFF8FAFC);
 
     return MaterialApp(
       title: 'OceanKart Shop',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: darkBackground,
+        brightness: Brightness.light,
+        scaffoldBackgroundColor: lightBackground,
         primaryColor: primaryBlue,
-        colorScheme: const ColorScheme.dark(
+        colorScheme: const ColorScheme.light(
           primary: primaryBlue,
-          surface: darkBackground,
+          surface: Colors.white,
+          onPrimary: Colors.white,
+          onSurface: Color(0xFF0F172A),
+        ),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          iconTheme: IconThemeData(color: Color(0xFF0F172A)),
+          titleTextStyle: TextStyle(
+            color: Color(0xFF0F172A),
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        cardTheme: CardThemeData(
+          color: Colors.white,
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
         ),
         useMaterial3: true,
       ),
