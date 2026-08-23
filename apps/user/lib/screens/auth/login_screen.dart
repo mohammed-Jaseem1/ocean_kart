@@ -42,10 +42,27 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       // Sign in existing user
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
+      final userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
+
+      // Check if they verified their email since they last logged in
+      final user = userCredential.user;
+      if (user != null && user.emailVerified) {
+        final docRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+        final docSnapshot = await docRef.get();
+        
+        if (docSnapshot.exists) {
+          final data = docSnapshot.data() as Map<String, dynamic>;
+          if (data['emailVerified'] != true) {
+            await docRef.update({
+              'emailVerified': true,
+              'status': 'active',
+            });
+          }
+        }
+      }
     } on FirebaseAuthException catch (e) {
       setState(() {
         if (e.code == 'user-not-found') {

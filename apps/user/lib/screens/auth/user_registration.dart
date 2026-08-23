@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:pinput/pinput.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../services/otp_service.dart';
@@ -20,8 +21,10 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
   final _emailController = TextEditingController();
   final _addressController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
 
   bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
   bool _isLoading = false;
   bool _isPhoneVerified = false;
   bool _isSendingOtp = false;
@@ -34,6 +37,7 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
     _emailController.dispose();
     _addressController.dispose();
     _passwordController.dispose();
+    _confirmPasswordController.dispose();
     super.dispose();
   }
 
@@ -146,16 +150,33 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
       }
 
       if (response.containsKey('access-token')) {
-        setState(() {
-          _isPhoneVerified = true;
-        });
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Mobile number auto-verified via network!'),
-              backgroundColor: Colors.green,
-            ),
-          );
+        final accessToken = response['access-token']?.toString() ?? '';
+        // Verify the JWT access-token server-side via Cloud Function
+        final verifyResult = await OtpService.verifyAccessToken(
+          accessToken: accessToken,
+          mobileNumber: rawPhone,
+        );
+        if (verifyResult['type'] == 'success') {
+          setState(() {
+            _isPhoneVerified = true;
+          });
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Mobile number auto-verified via network!'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(verifyResult['message']?.toString() ?? 'Auto-verification failed.'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
         }
         return;
       }
@@ -243,22 +264,43 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
                     ),
                     const SizedBox(height: 8),
                   ],
-                  TextField(
+                  Pinput(
+                    length: 6,
                     controller: otpController,
                     autofocus: true,
-                    style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold),
-                    keyboardType: TextInputType.number,
-                    maxLength: 6,
-                    decoration: const InputDecoration(
-                      hintText: 'Enter OTP',
-                      hintStyle: TextStyle(
-                        color: Color(0xFF94A3B8),
+                    defaultPinTheme: PinTheme(
+                      width: 44,
+                      height: 52,
+                      textStyle: const TextStyle(
+                        fontSize: 20,
+                        color: Color(0xFF0F172A),
+                        fontWeight: FontWeight.w600,
                       ),
-                      enabledBorder: UnderlineInputBorder(
-                        borderSide: BorderSide(color: Color(0xFFCBD5E1)),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
                       ),
-                      focusedBorder: UnderlineInputBorder(
-                        borderSide: BorderSide(color: Color(0xFF00B4D8), width: 2),
+                    ),
+                    focusedPinTheme: PinTheme(
+                      width: 46,
+                      height: 54,
+                      textStyle: const TextStyle(
+                        fontSize: 20,
+                        color: Color(0xFF0F172A),
+                        fontWeight: FontWeight.w600,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFF00B4D8), width: 2),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x2600B4D8),
+                            blurRadius: 8,
+                            spreadRadius: 1,
+                          )
+                        ],
                       ),
                     ),
                   ),
@@ -270,6 +312,7 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
                             try {
                               final retryRes = await OtpService.retryOtp(
                                 reqId: reqId,
+                                mobileNumber: mobileNumber,
                                 retryChannel: 11,
                               );
                               if (retryRes['type'] == 'error') {
@@ -328,6 +371,7 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
                             final result = await OtpService.verifyOtp(
                               otp: otp,
                               reqId: reqId,
+                              mobileNumber: mobileNumber,
                             );
                             if (result['type'] == 'error') {
                               setDialogState(() {
@@ -543,6 +587,8 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
     bool isPhone = false,
     bool isPassword = false,
     bool obscureText = false,
+    bool readOnly = false,
+    String? hintText,
     VoidCallback? onToggleObscure,
     String? Function(String?)? customValidator,
   }) {
@@ -551,9 +597,24 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12.0),
-      child: TextFormField(
-        controller: controller,
-        style: const TextStyle(color: textColor, fontWeight: FontWeight.w500),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 4.0, bottom: 6.0),
+            child: Text(
+              label + (isRequired ? ' *' : ''),
+              style: const TextStyle(
+                color: Color(0xFF64748B),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          TextFormField(
+            controller: controller,
+            readOnly: readOnly,
+            style: const TextStyle(color: textColor, fontWeight: FontWeight.w500),
         obscureText: obscureText,
         keyboardType: isEmail
             ? TextInputType.emailAddress
@@ -567,10 +628,8 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
               ]
             : null,
         decoration: InputDecoration(
-          labelText: label + (isRequired ? ' *' : ''),
-          labelStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 14),
-          prefixText: isPhone ? '+91 ' : null,
-          prefixStyle: isPhone ? const TextStyle(color: textColor, fontSize: 15, fontWeight: FontWeight.w500) : null,
+          hintText: hintText ?? 'Enter $label',
+          hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
           prefixIcon: Icon(icon, color: primaryBlue, size: 20),
           suffixIcon: isPhone
               ? (_isPhoneVerified
@@ -654,6 +713,8 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
               }
               return null;
             },
+      ),
+        ],
       ),
     );
   }
@@ -797,9 +858,11 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
                   _buildTextField(
                     controller: _mobileController,
                     label: 'Mobile Number',
+                    hintText: 'mobile number',
                     icon: Icons.phone_android_outlined,
                     isRequired: true,
                     isPhone: true,
+                    readOnly: _isPhoneVerified,
                   ),
                   _buildTextField(
                     controller: _emailController,
@@ -825,6 +888,21 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
                     customValidator: (value) {
                       if (value == null || value.isEmpty) return 'Password is required';
                       if (value.length < 6) return 'Password must be at least 6 characters';
+                      return null;
+                    },
+                  ),
+                  _buildTextField(
+                    controller: _confirmPasswordController,
+                    label: 'Confirm Password',
+                    hintText: 'Re-enter your password',
+                    icon: Icons.lock_outline,
+                    isRequired: true,
+                    isPassword: true,
+                    obscureText: _obscureConfirmPassword,
+                    onToggleObscure: () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
+                    customValidator: (value) {
+                      if (value == null || value.isEmpty) return 'Confirm Password is required';
+                      if (value != _passwordController.text) return 'Passwords do not match';
                       return null;
                     },
                   ),

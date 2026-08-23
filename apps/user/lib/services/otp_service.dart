@@ -1,19 +1,20 @@
 import 'package:flutter/foundation.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:sendotp_flutter_sdk/sendotp_flutter_sdk.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 /// Production-grade Service wrapper for MSG91 / SendOTP Flutter SDK.
 /// Falls back to Firebase Cloud Functions callable backend on SDK failure.
 class OtpService {
   OtpService._();
 
-  static const String defaultWidgetId = '366877666949303632383336';
-  static const String defaultAuthToken = '563466AVJB6j1dq9f6a8a80c1P1';
+  // ── OceanKart credentials loaded from .env ──────────────────────────────
+  static String get _widgetId => dotenv.env['MSG91_WIDGET_ID'] ?? '';
+  static String get _authToken => dotenv.env['MSG91_AUTH_TOKEN'] ?? '';
+  // ─────────────────────────────────────────────────────────────────────────
 
   static String? _currentReqId;
   static String? _lastError;
-  static String _widgetId = defaultWidgetId;
-  static String _authToken = defaultAuthToken;
   static bool _nativeInitialized = false;
 
   /// Gets the current active request ID for OTP verification or retry.
@@ -23,20 +24,7 @@ class OtpService {
   static String? get lastError => _lastError;
 
   /// Initializes / caches widget credentials.
-  static void initialize({
-    String widgetId = defaultWidgetId,
-    String authToken = defaultAuthToken,
-  }) {
-    cacheCredentials(widgetId: widgetId, authToken: authToken);
-  }
-
-  /// Caches widget credentials at startup without touching native code.
-  static void cacheCredentials({
-    String widgetId = defaultWidgetId,
-    String authToken = defaultAuthToken,
-  }) {
-    _widgetId = widgetId;
-    _authToken = authToken;
+  static void initialize() {
     debugPrint('OtpService credentials cached (native init deferred).');
   }
 
@@ -153,7 +141,7 @@ class OtpService {
   /// Retries sending OTP for [reqId] or active [_currentReqId].
   /// [retryChannel] optional: 11=SMS, 4=Voice, 3=Email, 12=WhatsApp.
   static Future<Map<String, dynamic>> retryOtp(
-      {String? reqId, int? retryChannel}) async {
+      {String? reqId, String? mobileNumber, int? retryChannel}) async {
     final targetReqId = reqId ?? _currentReqId;
     if (targetReqId == null || targetReqId.isEmpty) {
       return {'type': 'error', 'message': 'No active request ID for retry'};
@@ -272,6 +260,42 @@ class OtpService {
       return {'type': 'error', 'message': 'Verification failed via Cloud Function'};
     } on FirebaseFunctionsException catch (e) {
       return {'type': 'error', 'message': e.message ?? 'OTP verification failed'};
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // verifyAccessToken
+  // ---------------------------------------------------------------------------
+  static Future<Map<String, dynamic>> verifyAccessToken({
+    required String accessToken,
+    String? mobileNumber,
+  }) async {
+    debugPrint('verifyAccessToken: verifying JWT via Cloud Function...');
+    try {
+      final fn = FirebaseFunctions.instanceFor(region: 'us-central1')
+          .httpsCallable('verifyAccessToken');
+      final result = await fn.call({
+        'accessToken': accessToken,
+        if (mobileNumber != null) 'mobileNumber': mobileNumber,
+      });
+      final data = Map<String, dynamic>.from(result.data as Map);
+      debugPrint('verifyAccessToken CF result: $data');
+
+      if (data['success'] == true) {
+        return {
+          'type': 'success',
+          'message': 'Auto-verified via network.',
+          'customToken': data['customToken'],
+          'uid': data['uid'],
+          'mobile': data['mobile'],
+        };
+      }
+      return {'type': 'error', 'message': 'Access token verification failed'};
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint('verifyAccessToken CF error [${e.code}]: ${e.message}');
+      return {'type': 'error', 'message': e.message ?? 'Access token verification failed'};
+    } catch (e) {
+      return {'type': 'error', 'message': 'Access token verification failed: $e'};
     }
   }
 
