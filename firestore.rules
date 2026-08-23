@@ -2,19 +2,14 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Helper function to check if user is authenticated
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    // Helper function to check if caller is an admin
+    // Fixed isAdmin: exists() is expensive, prioritize the role check
     function isAdmin() {
-      return isAuthenticated() && (
-        exists(/databases/$(database)/documents/admin/$(request.auth.uid)) ||
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
-      );
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
     // Admin Collection: Read & write for authenticated users
@@ -28,26 +23,39 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Users Collection: Users can read/write their own document; Admins can read/write all
     match /users/{userId} {
       allow read: if isAuthenticated();
+      // Allow the user to update their own verification status and details
       allow create, update: if isAuthenticated() && request.auth.uid == userId;
-      allow write, delete: if isAdmin();
+      allow delete: if isAdmin();
+
+      // IMPORTANT: Rules for the products subcollection inside the user document
+      match /products/{productId} {
+        allow read: if true;
+        // Only the owner of the shop (userId) or an admin can write products
+        allow write: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      }
+      
+      // IMPORTANT: Rules for the cart subcollection
+      match /cart/{cartItemId} {
+        allow read, write: if isAuthenticated() && request.auth.uid == userId;
+      }
     }
 
-    // Orders Collection: Authenticated users & admins can read/write
     match /orders/{orderId} {
-      allow read, write: if isAuthenticated();
-    }
-
-    // Products / Inventory Collections: Authenticated users can read; Partners & Admins can write
-    match /products/{productId} {
-      allow read: if true;
-      allow write: if isAuthenticated();
+      // Customers can create orders and read their own. Admins can do everything.
+      allow create: if isAuthenticated();
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow update: if isAuthenticated(); 
     }
 
     match /inventory/{itemId} {
       allow read, write: if isAuthenticated();
+    }
+    
+    // Add this at the bottom of your rules file, outside of other match blocks
+    match /{path=**}/products/{productId} {
+      allow read: if true; // Allows anyone to see products in the dashboard
     }
   }
 }

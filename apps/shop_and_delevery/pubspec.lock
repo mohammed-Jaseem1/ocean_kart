@@ -81,6 +81,30 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "5.5.0"
+  cloud_functions:
+    dependency: "direct main"
+    description:
+      name: cloud_functions
+      sha256: f443d63d114c313b00a67a9507f63c17972d70cdb4a62cbbf43561246da05187
+      url: "https://pub.dev"
+    source: hosted
+    version: "6.3.2"
+  cloud_functions_platform_interface:
+    dependency: transitive
+    description:
+      name: cloud_functions_platform_interface
+      sha256: "640a625abb94b62423ebb67f0fca684ab03127194880e419f05460475f318202"
+      url: "https://pub.dev"
+    source: hosted
+    version: "6.0.2"
+  cloud_functions_web:
+    dependency: transitive
+    description:
+      name: cloud_functions_web
+      sha256: da3540b7c0390d6cfcf8d17b6e2722e3ae768801cd689ec31ed275d1e6b8ed24
+      url: "https://pub.dev"
+    source: hosted
+    version: "5.1.8"
   code_assets:
     dependency: transitive
     description:
@@ -262,6 +286,14 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
+  flutter_dotenv:
+    dependency: "direct main"
+    description:
+      name: flutter_dotenv
+      sha256: b7c7be5cd9f6ef7a78429cabd2774d3c4af50e79cb2b7593e3d5d763ef95c61b
+      url: "https://pub.dev"
+    source: hosted
+    version: "5.2.1"
   flutter_lints:
     dependency: "direct dev"
     description:
@@ -688,6 +720,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "7.0.2"
+  pinput:
+    dependency: "direct main"
+    description:
+      name: pinput
+      sha256: c41f42ee301505ae2375ec32871c985d3717bf8aee845620465b286e0140aad2
+      url: "https://pub.dev"
+    source: hosted
+    version: "5.0.2"
   platform:
     dependency: transitive
     description:
@@ -736,6 +776,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.6.0"
+  sendotp_flutter_sdk:
+    dependency: "direct main"
+    description:
+      name: sendotp_flutter_sdk
+      sha256: "4536dc5132c505c7f854c1f203b146f32f705e95640c476fa3320bf435c0e6ea"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.0.2"
   simple_sparse_list:
     dependency: transitive
     description:
@@ -813,6 +861,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.1.9"
+  universal_platform:
+    dependency: transitive
+    description:
+      name: universal_platform
+      sha256: "64e16458a0ea9b99260ceb5467a214c1f298d647c659af1bff6d3bf82536b1ec"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.1.0"
   url_launcher:
     dependency: "direct main"
     description:

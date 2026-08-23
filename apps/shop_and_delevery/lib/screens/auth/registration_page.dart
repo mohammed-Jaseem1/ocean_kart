@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../services/otp_service.dart';
 
 class RegistrationPage extends StatefulWidget {
   const RegistrationPage({super.key});
@@ -40,6 +41,9 @@ class _RegistrationPageState extends State<RegistrationPage> {
   String? _aadhaarCardFileName;
   String? _selfieFileName;
   final ImagePicker _picker = ImagePicker();
+
+  bool _isPhoneVerified = false;
+  bool _isSendingOtp = false;
 
   @override
   void dispose() {
@@ -91,6 +95,19 @@ class _RegistrationPageState extends State<RegistrationPage> {
     setState(() {
       _isLoading = true;
     });
+
+    if (!_isPhoneVerified) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please verify your mobile number first.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      setState(() {
+        _isLoading = false;
+      });
+      return;
+    }
 
     try {
       // Create user with Firebase Auth
@@ -217,6 +234,218 @@ class _RegistrationPageState extends State<RegistrationPage> {
     }
   }
 
+  Future<void> _handleSendOtp() async {
+    final rawPhone = _mobileNumberController.text.trim();
+    if (rawPhone.isEmpty || !RegExp(r'^[6-9]\d{9}$').hasMatch(rawPhone)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a valid 10-digit mobile number first.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isSendingOtp = true;
+    });
+
+    try {
+      final response = await OtpService.sendOtp(rawPhone);
+
+      if (response['type'] == 'error') {
+        final errMsg = response['message']?.toString() ?? 'Failed to send OTP.';
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(errMsg), backgroundColor: Colors.redAccent),
+          );
+        }
+        return;
+      }
+
+      if (response.containsKey('access-token')) {
+        final accessToken = response['access-token']?.toString() ?? '';
+        final verifyResult = await OtpService.verifyAccessToken(
+          accessToken: accessToken,
+          mobileNumber: rawPhone,
+        );
+        if (verifyResult['type'] == 'success') {
+          setState(() {
+            _isPhoneVerified = true;
+          });
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Mobile number auto-verified via network!'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(verifyResult['message']?.toString() ?? 'Auto-verification failed.'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+        }
+        return;
+      }
+
+      final String reqId = OtpService.currentReqId ??
+          response['reqId']?.toString() ??
+          response['message']?.toString() ??
+          '';
+
+      if (!mounted) return;
+      final bool? isVerified = await _showOtpDialog(reqId, rawPhone);
+
+      if (isVerified == true) {
+        setState(() {
+          _isPhoneVerified = true;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Mobile number verified successfully!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to send OTP: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSendingOtp = false;
+        });
+      }
+    }
+  }
+
+  Future<bool?> _showOtpDialog(String reqId, String mobileNumber) async {
+    final TextEditingController otpController = TextEditingController();
+    bool isVerifying = false;
+    String? dialogError;
+
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFF132238),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: const Text(
+                'Enter OTP',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Enter the verification code sent to +91 $mobileNumber',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.7),
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: otpController,
+                    keyboardType: TextInputType.number,
+                    style: const TextStyle(color: Colors.white, fontSize: 18, letterSpacing: 2),
+                    textAlign: TextAlign.center,
+                    maxLength: 6,
+                    decoration: InputDecoration(
+                      counterText: '',
+                      hintText: '000000',
+                      hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
+                      filled: true,
+                      fillColor: const Color(0xFF0A1628),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                  if (dialogError != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      dialogError!,
+                      style: const TextStyle(color: Colors.redAccent, fontSize: 13),
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isVerifying ? null : () => Navigator.pop(context, false),
+                  child: Text('Cancel', style: TextStyle(color: Colors.white.withValues(alpha: 0.7))),
+                ),
+                ElevatedButton(
+                  onPressed: isVerifying
+                      ? null
+                      : () async {
+                          final code = otpController.text.trim();
+                          if (code.length < 4) {
+                            setDialogState(() => dialogError = 'Enter a valid OTP');
+                            return;
+                          }
+                          setDialogState(() {
+                            isVerifying = true;
+                            dialogError = null;
+                          });
+
+                          try {
+                            final res = await OtpService.verifyOtp(otp: code, reqId: reqId, mobileNumber: mobileNumber);
+                            if (res['type'] == 'success') {
+                              if (context.mounted) Navigator.pop(context, true);
+                            } else {
+                              setDialogState(() {
+                                isVerifying = false;
+                                dialogError = res['message']?.toString() ?? 'Verification failed';
+                              });
+                            }
+                          } catch (e) {
+                            setDialogState(() {
+                              isVerifying = false;
+                              dialogError = 'Error: $e';
+                            });
+                          }
+                        },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF00B4D8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  child: isVerifying
+                      ? const SizedBox(
+                          height: 16,
+                          width: 16,
+                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                        )
+                      : const Text('Verify', style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   Widget _buildSectionHeader(String title) {
     const primaryBlue = Color(0xFF00B4D8);
     return Padding(
@@ -242,6 +471,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
     bool isMobileNumber = false,
     bool isPassword = false,
     bool obscureText = false,
+    bool readOnly = false,
     VoidCallback? onToggleObscure,
     String? Function(String?)? customValidator,
   }) {
@@ -254,6 +484,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
         controller: controller,
         style: const TextStyle(color: Colors.white),
         obscureText: obscureText,
+        readOnly: readOnly,
         keyboardType: isEmail
             ? TextInputType.emailAddress
             : isPhone
@@ -269,17 +500,45 @@ class _RegistrationPageState extends State<RegistrationPage> {
           prefixText: isMobileNumber ? '+91 ' : null,
           prefixStyle: isMobileNumber ? const TextStyle(color: Colors.white, fontSize: 16) : null,
           prefixIcon: Icon(icon, color: primaryBlue),
-          suffixIcon: isPassword
-              ? IconButton(
-                  icon: Icon(
-                    obscureText
-                        ? Icons.visibility_outlined
-                        : Icons.visibility_off_outlined,
-                    color: Colors.white.withValues(alpha: 0.6),
-                  ),
-                  onPressed: onToggleObscure,
-                )
-              : null,
+          suffixIcon: isMobileNumber
+              ? (_isPhoneVerified
+                  ? Container(
+                      margin: const EdgeInsets.all(8),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.check_circle, color: Colors.green, size: 16),
+                          SizedBox(width: 4),
+                          Text('Verified', style: TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    )
+                  : TextButton(
+                      onPressed: _isSendingOtp ? null : _handleSendOtp,
+                      child: _isSendingOtp
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: primaryBlue),
+                            )
+                          : const Text('Verify', style: TextStyle(color: primaryBlue, fontWeight: FontWeight.bold)),
+                    ))
+              : isPassword
+                  ? IconButton(
+                      icon: Icon(
+                        obscureText
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                        color: Colors.white.withValues(alpha: 0.6),
+                      ),
+                      onPressed: onToggleObscure,
+                    )
+                  : null,
           filled: true,
           fillColor: darkBackground.withValues(alpha: 0.5),
           enabledBorder: OutlineInputBorder(
@@ -546,6 +805,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
                         isRequired: true,
                         isPhone: true,
                         isMobileNumber: true,
+                        readOnly: _isPhoneVerified,
                       ),
                       _buildTextField(
                         controller: _emailController,

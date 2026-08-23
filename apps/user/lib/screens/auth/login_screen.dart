@@ -37,22 +37,66 @@ class _LoginScreenState extends State<LoginScreen> {
       _errorMessage = null;
     });
 
-    final email = _emailController.text.trim();
+    final input = _emailController.text.trim();
     final password = _passwordController.text.trim();
+
+    String emailToUse = input;
+    
+    // Check if input is a 10-digit mobile number
+    if (RegExp(r'^\d{10}$').hasMatch(input)) {
+      try {
+        final querySnapshot = await FirebaseFirestore.instance
+            .collection('users')
+            .where('mobileNumber', isEqualTo: input)
+            .limit(1)
+            .get();
+            
+        if (querySnapshot.docs.isEmpty) {
+          setState(() {
+            _isLoading = false;
+            _errorMessage = 'No account found with this mobile number.';
+          });
+          return;
+        }
+        
+        emailToUse = querySnapshot.docs.first.data()['email'] as String;
+      } catch (e) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Failed to find account. Please try again.';
+        });
+        return;
+      }
+    }
 
     try {
       // Sign in existing user
       final userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: email,
+        email: emailToUse,
         password: password,
       );
 
-      // Check if they verified their email since they last logged in
       final user = userCredential.user;
-      if (user != null && user.emailVerified) {
-        final docRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+      if (user != null) {
+        // Force-reload to get the latest emailVerified status from Firebase Auth
+        await user.reload();
+        // Forces the security token to refresh with the "email_verified" claim
+        await user.getIdToken(true);
+
+        final freshUser = FirebaseAuth.instance.currentUser;
+
+        if (freshUser == null || !freshUser.emailVerified) {
+          await FirebaseAuth.instance.signOut();
+          setState(() {
+            _errorMessage = 'Your email is not verified yet. Please check your inbox and verify your email to log in.';
+          });
+          return;
+        }
+
+        // Sync emailVerified & status to Firestore if not already updated
+        final docRef = FirebaseFirestore.instance.collection('users').doc(freshUser.uid);
         final docSnapshot = await docRef.get();
-        
+
         if (docSnapshot.exists) {
           final data = docSnapshot.data() as Map<String, dynamic>;
           if (data['emailVerified'] != true) {
@@ -102,17 +146,86 @@ class _LoginScreenState extends State<LoginScreen> {
       final UserCredential userCredential = await _googleSignIn();
 
       if (userCredential.user != null) {
+        final user = userCredential.user!;
+        
         // Check if user exists in Firestore
-        final doc = await FirebaseFirestore.instance.collection('users').doc(userCredential.user!.uid).get();
+        final docRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+        final doc = await docRef.get();
+        
         if (!doc.exists) {
-          await FirebaseFirestore.instance.collection('users').doc(userCredential.user!.uid).set({
-            'uid': userCredential.user!.uid,
-            'email': userCredential.user!.email ?? '',
-            'name': userCredential.user!.displayName ?? 'Google User',
+          // Scenario A: Completely new user
+          await docRef.set({
+            'uid': user.uid,
+            'email': user.email ?? '',
+            'name': user.displayName ?? 'Google User',
             'role': 'customer',
+            'emailVerified': true,
             'createdAt': FieldValue.serverTimestamp(),
             'status': 'active',
           });
+        } else {
+          final data = doc.data() as Map<String, dynamic>;
+          
+          if (data['emailVerified'] == true || data['status'] == 'active') {
+            // Scenario B: Existing VERIFIED user
+            // Firebase Auth automatically linked the Google identity if they have the same email.
+            // We just let them log in.
+          } else {
+            // Scenario C: Existing UNVERIFIED user (Security Risk)
+            // Immediately sign them out to block the session
+            await FirebaseAuth.instance.signOut();
+            await GoogleSignIn.instance.signOut();
+            
+            if (mounted) {
+              setState(() {
+                _isLoading = false;
+              });
+              
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (context) => AlertDialog(
+                  title: const Text('Account Verification Required'),
+                  content: const Text(
+                      'An account with this email already exists but is not verified. '
+                      'To link your Google account securely, please verify your identity first.'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Back'),
+                    ),
+                    ElevatedButton(
+                      onPressed: () async {
+                        try {
+                          await user.sendEmailVerification();
+                          if (context.mounted) {
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Verification link sent! Please check your inbox.'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Failed to send verification email: $e'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        }
+                      },
+                      child: const Text('Send Verification Email'),
+                    ),
+                  ],
+                ),
+              );
+            }
+            return; // Stop execution
+          }
         }
       }
     } catch (e) {
@@ -245,7 +358,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 24),
                     const Text(
-                      'OceanKart Users',
+                      'OceanKart',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 26,
@@ -289,9 +402,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       controller: _emailController,
                       style: const TextStyle(color: textColor, fontWeight: FontWeight.w500),
                       decoration: InputDecoration(
-                        hintText: 'Email Address',
+                        hintText: 'Email or Mobile Number',
                         hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
-                        prefixIcon: const Icon(Icons.email_outlined, color: primaryBlue),
+                        prefixIcon: const Icon(Icons.person_outline_rounded, color: primaryBlue),
                         filled: true,
                         fillColor: Colors.white,
                         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
@@ -311,10 +424,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       keyboardType: TextInputType.emailAddress,
                       validator: (value) {
                         if (value == null || value.trim().isEmpty) {
-                          return 'Please enter your email';
-                        }
-                        if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value.trim())) {
-                          return 'Please enter a valid email address';
+                          return 'Please enter your email or mobile number';
                         }
                         return null;
                       },

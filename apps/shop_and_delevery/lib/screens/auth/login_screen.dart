@@ -34,15 +34,66 @@ class _LoginScreenState extends State<LoginScreen> {
       _errorMessage = null;
     });
 
-    final email = _emailController.text.trim();
+    final input = _emailController.text.trim();
     final password = _passwordController.text.trim();
+
+    String emailToUse = input;
+    
+    // Check if input is a 10-digit mobile number
+    if (RegExp(r'^\d{10}$').hasMatch(input)) {
+      try {
+        final querySnapshot = await FirebaseFirestore.instance
+            .collection('users')
+            .where('mobileNumber', isEqualTo: input)
+            .limit(1)
+            .get();
+            
+        if (querySnapshot.docs.isEmpty) {
+          setState(() {
+            _isLoading = false;
+            _errorMessage = 'No account found with this mobile number.';
+          });
+          return;
+        }
+        
+        final data = querySnapshot.docs.first.data();
+        final role = data['role'];
+        if (role != 'Shopkeeper' && role != 'Delivery Boy') {
+           setState(() {
+             _isLoading = false;
+             _errorMessage = 'Access Denied. Only Shopkeepers and Delivery Boys can log in here.';
+           });
+           return;
+        }
+
+        emailToUse = data['email'] as String;
+      } catch (e) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Failed to find account. Please try again.';
+        });
+        return;
+      }
+    }
 
     try {
       // Sign in the user first to get Firebase Auth credentials
       final userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: email,
+        email: emailToUse,
         password: password,
       );
+
+      final user = userCredential.user;
+      if (user != null) {
+        if (!user.emailVerified) {
+          await FirebaseAuth.instance.signOut();
+          setState(() {
+            _errorMessage = 'Your email is not verified yet. Please check your inbox and verify your email to log in.';
+            _isLoading = false;
+          });
+          return;
+        }
+      }
 
       if (!mounted) return;
 
@@ -107,152 +158,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Future<void> _signInWithPhone() async {
-    final phoneController = TextEditingController();
-    
-    // Show dialog to get phone number
-    final phone = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF132238),
-        title: const Text('Enter Phone Number', style: TextStyle(color: Colors.white)),
-        content: TextField(
-          controller: phoneController,
-          style: const TextStyle(color: Colors.white),
-          keyboardType: TextInputType.phone,
-          decoration: InputDecoration(
-            hintText: '+91 9876543210',
-            hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
-            enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white)),
-            focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF00B4D8))),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, phoneController.text.trim()),
-            child: const Text('Send OTP', style: TextStyle(color: Color(0xFF00B4D8))),
-          ),
-        ],
-      ),
-    );
-
-    if (phone == null || phone.isEmpty) return;
-
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-
-    try {
-      await FirebaseAuth.instance.verifyPhoneNumber(
-        phoneNumber: phone,
-        verificationCompleted: (PhoneAuthCredential credential) async {
-          await _signInWithPhoneCredential(credential, phone);
-        },
-        verificationFailed: (FirebaseAuthException e) {
-          setState(() {
-            _errorMessage = 'Phone verification failed: ${e.message}';
-            _isLoading = false;
-          });
-        },
-        codeSent: (String verificationId, int? resendToken) async {
-          setState(() {
-            _isLoading = false;
-          });
-          // Show dialog to enter OTP
-          final otpController = TextEditingController();
-          final otp = await showDialog<String>(
-            context: context,
-            barrierDismissible: false,
-            builder: (context) => AlertDialog(
-              backgroundColor: const Color(0xFF132238),
-              title: const Text('Enter OTP', style: TextStyle(color: Colors.white)),
-              content: TextField(
-                controller: otpController,
-                style: const TextStyle(color: Colors.white),
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  hintText: '123456',
-                  hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
-                  enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white)),
-                  focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF00B4D8))),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pop(context, otpController.text.trim()),
-                  child: const Text('Verify', style: TextStyle(color: Color(0xFF00B4D8))),
-                ),
-              ],
-            ),
-          );
-
-          if (otp != null && otp.isNotEmpty) {
-            setState(() {
-              _isLoading = true;
-            });
-            PhoneAuthCredential credential = PhoneAuthProvider.credential(
-              verificationId: verificationId,
-              smsCode: otp,
-            );
-            await _signInWithPhoneCredential(credential, phone);
-          }
-        },
-        codeAutoRetrievalTimeout: (String verificationId) {},
-      );
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-        _errorMessage = 'An error occurred: $e';
-      });
-    }
-  }
-
-  Future<void> _signInWithPhoneCredential(AuthCredential credential, String phone) async {
-    try {
-      final userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
-      if (userCredential.user != null) {
-        final doc = await FirebaseFirestore.instance.collection('users').doc(userCredential.user!.uid).get();
-        if (!doc.exists) {
-          await FirebaseAuth.instance.signOut();
-          setState(() {
-            _errorMessage = 'Your request was rejected.';
-          });
-          return;
-        }
-        final userData = doc.data() as Map<String, dynamic>;
-        if (userData['status'] == 'pending') {
-          await FirebaseAuth.instance.signOut();
-          setState(() {
-            _errorMessage = 'Your account is pending admin approval.';
-          });
-          return;
-        }
-      }
-    } on FirebaseAuthException catch (e) {
-      setState(() {
-        _errorMessage = 'Phone Sign-In failed: ${e.message}';
-      });
-    } catch (e) {
-      setState(() {
-        _errorMessage = 'Phone Sign-In failed: $e';
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
+  // Firebase Phone Auth removed in favor of MSG91 unified login
 
   @override
   Widget build(BuildContext context) {
@@ -370,9 +276,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         controller: _emailController,
                         style: const TextStyle(color: Colors.white),
                         decoration: InputDecoration(
-                          labelText: 'Email Address',
+                          labelText: 'Email or Mobile Number',
                           labelStyle: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
-                          prefixIcon: const Icon(Icons.email_outlined, color: primaryBlue),
+                          prefixIcon: const Icon(Icons.person_outline_rounded, color: primaryBlue),
                           filled: true,
                           fillColor: darkBackground.withValues(alpha: 0.5),
                           enabledBorder: OutlineInputBorder(
@@ -395,10 +301,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         keyboardType: TextInputType.emailAddress,
                         validator: (value) {
                           if (value == null || value.trim().isEmpty) {
-                            return 'Please enter your email';
-                          }
-                          if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value.trim())) {
-                            return 'Please enter a valid email address';
+                            return 'Please enter your email or mobile number';
                           }
                           return null;
                         },
@@ -508,37 +411,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 16),
                       
-                      Row(
-                        children: [
-                          Expanded(child: Divider(color: Colors.white.withValues(alpha: 0.2))),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: Text(
-                              'OR CONTINUE WITH',
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.5),
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                          Expanded(child: Divider(color: Colors.white.withValues(alpha: 0.2))),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      
-                      OutlinedButton.icon(
-                        onPressed: _isLoading ? null : _signInWithPhone,
-                        icon: const Icon(Icons.phone_android, color: Colors.white, size: 20),
-                        label: const Text('Phone', style: TextStyle(color: Colors.white)),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          side: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                      ),
+                      // Phone auth UI removed
                     ],
                   ),
                 ),

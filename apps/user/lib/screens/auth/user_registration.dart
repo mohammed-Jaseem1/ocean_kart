@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:pinput/pinput.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import '../../services/otp_service.dart';
 
 class UserRegistrationPage extends StatefulWidget {
@@ -453,7 +454,17 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
       final User? user = userCredential.user;
       final String uid = user!.uid;
 
-      // Step 2: Send Email Verification link
+      // Step 2: Link verified phone number to Firebase Auth (shows as provider)
+      try {
+        final linkFn = FirebaseFunctions.instanceFor(region: 'us-central1')
+            .httpsCallable('linkPhoneNumber');
+        await linkFn.call({'uid': uid, 'mobileNumber': rawPhone});
+      } catch (e) {
+        // Non-fatal: phone linking failure should not block registration
+        debugPrint('linkPhoneNumber warning: $e');
+      }
+
+      // Step 3: Send Email Verification link
       await user.sendEmailVerification();
 
       // Step 3: Save user data to Firestore
@@ -471,81 +482,13 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
         'status': 'pending_email_verification',
       });
 
+      // Keep user signed in and show the polling verification dialog
       if (mounted) {
         showDialog(
           context: context,
           barrierDismissible: false,
           builder: (BuildContext context) {
-            return Dialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-              backgroundColor: Colors.white,
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF00B4D8).withValues(alpha: 0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.mark_email_read_outlined,
-                        color: Color(0xFF00B4D8),
-                        size: 48,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Verify Your Email',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF0F172A),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'A verification link has been sent to:\n$email\n\nPlease check your email inbox and click the link to verify your account.',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: Color(0xFF64748B),
-                        height: 1.4,
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                          Navigator.of(context).pop();
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF00B4D8),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: const Text(
-                          'OK, Go to Login',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
+            return const EmailVerificationDialog();
           },
         );
       }
@@ -911,6 +854,150 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class EmailVerificationDialog extends StatefulWidget {
+  const EmailVerificationDialog({super.key});
+
+  @override
+  State<EmailVerificationDialog> createState() => _EmailVerificationDialogState();
+}
+
+class _EmailVerificationDialogState extends State<EmailVerificationDialog> {
+  Timer? _timer;
+  bool _isVerified = false;
+  String _userEmail = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _userEmail = FirebaseAuth.instance.currentUser?.email ?? '';
+    _timer = Timer.periodic(const Duration(seconds: 3), (timer) async {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        await user.reload();
+        await user.getIdToken(true);
+        final freshUser = FirebaseAuth.instance.currentUser;
+        if (freshUser != null && freshUser.emailVerified) {
+          timer.cancel();
+          if (mounted) {
+            setState(() {
+              _isVerified = true;
+            });
+            
+            // Update Firestore
+            await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+              'emailVerified': true,
+              'status': 'active',
+            });
+            
+            // Wait 1.5s for them to see success, then pop to root (AuthGate will take over)
+            Future.delayed(const Duration(milliseconds: 1500), () {
+              if (mounted) {
+                Navigator.of(context).popUntil((route) => route.isFirst);
+              }
+            });
+          }
+        }
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const primaryBlue = Color(0xFF00B4D8);
+
+    return Dialog(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+      ),
+      backgroundColor: Colors.white,
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: _isVerified 
+                    ? Colors.green.withValues(alpha: 0.1) 
+                    : primaryBlue.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                _isVerified ? Icons.check_circle_rounded : Icons.mark_email_unread_outlined,
+                color: _isVerified ? Colors.green : primaryBlue,
+                size: 48,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              _isVerified ? 'Email Verified!' : 'Verify Your Email',
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              _isVerified
+                  ? 'Your email has been verified successfully. Redirecting you to the dashboard...'
+                  : 'A verification link has been sent to:\n$_userEmail\n\nWe are waiting for you to click the link. This screen will update automatically.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 14,
+                color: Color(0xFF64748B),
+                height: 1.4,
+              ),
+            ),
+            if (!_isVerified) ...[
+              const SizedBox(height: 24),
+              const CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(primaryBlue),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    // Sign out manually and pop to login if they want to cancel
+                    FirebaseAuth.instance.signOut();
+                    Navigator.of(context).pop();
+                    Navigator.of(context).pop();
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: const Color(0xFF64748B),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: const BorderSide(color: Color(0xFFCBD5E1)),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: const Text(
+                    'Cancel & Return to Login',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            ]
+          ],
         ),
       ),
     );

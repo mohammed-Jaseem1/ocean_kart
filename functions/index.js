@@ -231,3 +231,45 @@ exports.verifyAccessToken = onCall(async (request) => {
     throw new HttpsError("internal", String(errMsg));
   }
 });
+/**
+ * Link Phone Number to Firebase Auth user — uses Admin SDK to update phoneNumber.
+ * Called after OTP is successfully verified to attach the phone number as a provider.
+ *
+ * Data payload: { uid: '<firebase-uid>', mobileNumber: '9876543210' }
+ * Requires the caller to be authenticated (request.auth.uid must match uid).
+ */
+exports.linkPhoneNumber = onCall(async (request) => {
+  const callerUid = request.auth?.uid;
+  const { uid, mobileNumber } = request.data || {};
+
+  if (!callerUid) {
+    throw new HttpsError("unauthenticated", "You must be signed in to link a phone number.");
+  }
+  if (!uid || !mobileNumber) {
+    throw new HttpsError("invalid-argument", "'uid' and 'mobileNumber' are required.");
+  }
+  if (callerUid !== uid) {
+    throw new HttpsError("permission-denied", "You can only link your own phone number.");
+  }
+
+  // Normalize: strip formatting, add country code +91 for 10-digit Indian numbers
+  let clean = String(mobileNumber).replace(/[+\s-]/g, "");
+  if (clean.length === 10) {
+    clean = `91${clean}`;
+  }
+  const e164Phone = `+${clean}`;
+
+  try {
+    await admin.auth().updateUser(uid, { phoneNumber: e164Phone });
+    console.log(`linkPhoneNumber: linked ${e164Phone} to uid ${uid}`);
+    return { success: true, phoneNumber: e164Phone };
+  } catch (error) {
+    const errMsg = error.message || "Failed to link phone number.";
+    console.error("linkPhoneNumber Error:", errMsg);
+    // If phone is already linked to another account, give a clear message
+    if (error.code === "auth/phone-number-already-exists") {
+      throw new HttpsError("already-exists", "This phone number is already linked to another account.");
+    }
+    throw new HttpsError("internal", errMsg);
+  }
+});

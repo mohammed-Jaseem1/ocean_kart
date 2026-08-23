@@ -83,7 +83,7 @@ class AuthGate extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
+      stream: FirebaseAuth.instance.userChanges(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
@@ -97,6 +97,15 @@ class AuthGate extends StatelessWidget {
 
         if (snapshot.hasData) {
           final user = snapshot.data!;
+
+          // Block unverified users — return to login.
+          // Do NOT call signOut() here: it would race with the registration's
+          // Firestore write and cause PERMISSION_DENIED.
+          // The registration flow signs out AFTER the Firestore write completes.
+          if (!user.emailVerified) {
+            return const LoginScreen();
+          }
+
           return StreamBuilder<DocumentSnapshot>(
             stream: FirebaseFirestore.instance
                 .collection('users')
@@ -144,7 +153,7 @@ class AuthGate extends StatelessWidget {
                 }
               }
 
-              // Waiting for login screen to create the document
+              // Waiting for Firestore document
               return const Scaffold(
                 body: Center(
                   child: CircularProgressIndicator(
