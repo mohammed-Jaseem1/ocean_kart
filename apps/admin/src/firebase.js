@@ -23,4 +23,8 @@ setPersistence(auth, browserLocalPersistence)
     console.error("Error setting session persistence:", error);
   });
 
-export { app, auth, db, storage };
+// Initialize a secondary app instance specifically for creating users without logging out the primary admin session
+const secondaryApp = initializeApp(firebaseConfig, "Secondary");
+const secondaryAuth = getAuth(secondaryApp);
+
+export { app, auth, db, storage, secondaryApp, secondaryAuth };

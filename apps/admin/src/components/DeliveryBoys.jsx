@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, getDocs, doc, updateDoc } from 'firebase/firestore';
-import { db } from '../firebase';
+import { collection, query, getDocs, doc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
+import { db, secondaryAuth } from '../firebase';
 
 const DeliveryBoys = () => {
   const [deliveryPartners, setDeliveryPartners] = useState([]);
@@ -8,6 +9,24 @@ const DeliveryBoys = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
   const [actionLoading, setActionLoading] = useState(null);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addingUser, setAddingUser] = useState(false);
+  const [formData, setFormData] = useState({
+    name: '', mobileNumber: '', email: '', password: '',
+    location: '', landmark: '', address: '', pincode: ''
+  });
+
+  const inputStyle = { 
+    padding: '10px 14px', 
+    borderRadius: '8px', 
+    border: '1px solid #cbd5e1', 
+    fontSize: '14px', 
+    outline: 'none', 
+    boxSizing: 'border-box', 
+    width: '100%',
+    background: '#f8fafc',
+    color: '#0f172a'
+  };
 
   useEffect(() => {
     fetchDeliveryPartners();
@@ -30,6 +49,51 @@ const DeliveryBoys = () => {
       console.error('Error fetching delivery partners:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleAddSubmit = async (e) => {
+    e.preventDefault();
+    setAddingUser(true);
+    try {
+      const userCred = await createUserWithEmailAndPassword(secondaryAuth, formData.email, formData.password);
+      const uid = userCred.user.uid;
+      
+      await setDoc(doc(db, 'users', uid), {
+        uid,
+        email: formData.email,
+        role: 'Delivery Boy',
+        name: formData.name,
+        mobileNumber: formData.mobileNumber,
+        address: formData.address,
+        houseAddress: formData.address,
+        location: formData.location,
+        landmark: formData.landmark,
+        pincode: formData.pincode,
+        status: 'active',
+        emailVerified: true,
+        isPhoneVerified: true,
+        createdAt: serverTimestamp()
+      });
+      
+      await signOut(secondaryAuth);
+      setShowAddModal(false);
+      setFormData({
+        name: '', mobileNumber: '', email: '', password: '',
+        location: '', landmark: '', address: '', pincode: ''
+      });
+      fetchDeliveryPartners();
+      alert('Delivery Partner added and verified successfully!');
+    } catch (err) {
+      console.error('Error adding delivery partner:', err);
+      alert('Failed to add delivery partner: ' + err.message);
+    } finally {
+      setAddingUser(false);
     }
   };
 
@@ -62,7 +126,14 @@ const DeliveryBoys = () => {
     <div className="table-card">
       <div className="table-header" style={{ flexWrap: 'wrap', gap: '16px' }}>
         <div>
-          <h2>Delivery Boys & Partners</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <h2 style={{ margin: 0 }}>Delivery Boys & Partners</h2>
+            <button 
+              onClick={() => setShowAddModal(true)}
+              style={{ padding: '8px 14px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '600', fontSize: '13px', cursor: 'pointer' }}>
+              + Add Delivery Partner
+            </button>
+          </div>
           <p style={{ color: '#64748b', fontSize: '13px', margin: '4px 0 0' }}>
             Manage delivery personnel, check vehicle verification, and handle active approvals.
           </p>
@@ -103,6 +174,59 @@ const DeliveryBoys = () => {
           </select>
         </div>
       </div>
+
+      {showAddModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#ffffff', padding: '28px', borderRadius: '16px', width: '90%', maxWidth: '620px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)', border: '1px solid #e2e8f0' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px' }}>
+              <h2 style={{ margin: 0, fontSize: '20px', color: '#0f172a', fontWeight: '700' }}>Add New Delivery Partner</h2>
+              <button onClick={() => setShowAddModal(false)} style={{ background: 'transparent', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#64748b' }}>&times;</button>
+            </div>
+            <form onSubmit={handleAddSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: '600', color: '#475569' }}>Full Name *</label>
+                  <input required name="name" value={formData.name} onChange={handleInputChange} placeholder="e.g. Rahul Kumar" style={inputStyle} />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: '600', color: '#475569' }}>Phone Number *</label>
+                  <input required name="mobileNumber" value={formData.mobileNumber} onChange={handleInputChange} placeholder="e.g. 9876543210" style={inputStyle} />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: '600', color: '#475569' }}>Email Address *</label>
+                  <input required type="email" name="email" value={formData.email} onChange={handleInputChange} placeholder="e.g. partner@example.com" style={inputStyle} />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: '600', color: '#475569' }}>Password *</label>
+                  <input required type="password" name="password" value={formData.password} onChange={handleInputChange} placeholder="••••••••" style={inputStyle} />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: '600', color: '#475569' }}>Location *</label>
+                  <input required name="location" value={formData.location} onChange={handleInputChange} placeholder="e.g. Kochi" style={inputStyle} />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: '600', color: '#475569' }}>Landmark *</label>
+                  <input required name="landmark" value={formData.landmark} onChange={handleInputChange} placeholder="e.g. Near Bus Stand" style={inputStyle} />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', gridColumn: 'span 2' }}>
+                  <label style={{ fontSize: '12px', fontWeight: '600', color: '#475569' }}>Pincode *</label>
+                  <input required name="pincode" value={formData.pincode} onChange={handleInputChange} placeholder="e.g. 682001" style={inputStyle} />
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '12px', fontWeight: '600', color: '#475569' }}>Full Address *</label>
+                <textarea required name="address" value={formData.address} onChange={handleInputChange} placeholder="Enter complete home address..." style={{ ...inputStyle, minHeight: '80px', resize: 'vertical' }} />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '12px', borderTop: '1px solid #f1f5f9', paddingTop: '16px' }}>
+                <button type="button" onClick={() => setShowAddModal(false)} style={{ padding: '10px 20px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#ffffff', color: '#475569', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>Cancel</button>
+                <button type="submit" disabled={addingUser} style={{ padding: '10px 20px', borderRadius: '8px', border: 'none', background: addingUser ? '#94a3b8' : '#0284c7', color: '#ffffff', cursor: addingUser ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '14px' }}>
+                  {addingUser ? 'Adding...' : 'Add Partner'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       <div className="custom-table-wrapper">
         <table className="custom-table">

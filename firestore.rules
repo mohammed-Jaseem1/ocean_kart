@@ -57,5 +57,10 @@ service cloud.firestore {
     match /{path=**}/products/{productId} {
       allow read: if true; // Allows anyone to see products in the dashboard
     }
+
+    // Categories Collection: Read & write access
+    match /categories/{categoryId} {
+      allow read, write: if true;
+    }
   }
 }

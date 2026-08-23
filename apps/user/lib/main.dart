@@ -77,15 +77,43 @@ class MyApp extends StatelessWidget {
   }
 }
 
-class AuthGate extends StatelessWidget {
+class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
 
   @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
+  bool _retrying = false;
+
+  void _retry() {
+    setState(() {
+      _retrying = true;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() => _retrying = false);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_retrying) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00B4D8)),
+          ),
+        ),
+      );
+    }
+
     return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.userChanges(),
+      stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+        // Only show loading on very first load (no data yet)
+        if (snapshot.connectionState == ConnectionState.waiting &&
+            !snapshot.hasData) {
           return const Scaffold(
             body: Center(
               child: CircularProgressIndicator(
@@ -95,13 +123,16 @@ class AuthGate extends StatelessWidget {
           );
         }
 
+        if (snapshot.hasError) {
+          return _buildErrorScreen(
+            context,
+            'Authentication error. Please check your connection.',
+          );
+        }
+
         if (snapshot.hasData) {
           final user = snapshot.data!;
 
-          // Block unverified users — return to login.
-          // Do NOT call signOut() here: it would race with the registration's
-          // Firestore write and cause PERMISSION_DENIED.
-          // The registration flow signs out AFTER the Firestore write completes.
           if (!user.emailVerified) {
             return const LoginScreen();
           }
@@ -112,7 +143,9 @@ class AuthGate extends StatelessWidget {
                 .doc(user.uid)
                 .snapshots(),
             builder: (context, docSnapshot) {
-              if (docSnapshot.connectionState == ConnectionState.waiting) {
+              // Only show loading on very first load (no data yet)
+              if (docSnapshot.connectionState == ConnectionState.waiting &&
+                  !docSnapshot.hasData) {
                 return const Scaffold(
                   body: Center(
                     child: CircularProgressIndicator(
@@ -124,10 +157,16 @@ class AuthGate extends StatelessWidget {
                 );
               }
 
+              if (docSnapshot.hasError) {
+                return _buildErrorScreen(
+                  context,
+                  'Failed to load your profile. Please try again.',
+                );
+              }
+
               if (docSnapshot.hasData && docSnapshot.data!.exists) {
                 final data = docSnapshot.data!.data() as Map<String, dynamic>?;
                 if (data != null && data['role'] != 'customer') {
-                  // Role is not customer, sign them out immediately
                   WidgetsBinding.instance.addPostFrameCallback((_) {
                     FirebaseAuth.instance.signOut();
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -153,7 +192,6 @@ class AuthGate extends StatelessWidget {
                 }
               }
 
-              // Waiting for Firestore document
               return const Scaffold(
                 body: Center(
                   child: CircularProgressIndicator(
@@ -169,6 +207,80 @@ class AuthGate extends StatelessWidget {
 
         return const LoginScreen();
       },
+    );
+  }
+
+  Widget _buildErrorScreen(BuildContext context, String message) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.error_outline_rounded,
+                color: Colors.redAccent,
+                size: 56,
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Something went wrong',
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: Color(0xFF64748B),
+                ),
+              ),
+              const SizedBox(height: 28),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton(
+                  onPressed: _retry,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF00B4D8),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text(
+                    'Retry',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              TextButton(
+                onPressed: () async {
+                  await FirebaseAuth.instance.signOut();
+                },
+                child: const Text(
+                  'Sign Out',
+                  style: TextStyle(
+                    color: Color(0xFF64748B),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

@@ -25,16 +25,36 @@ const Categories = () => {
     fetchCategories();
   }, []);
 
-  const fetchCategories = async () => {
+  const fetchCategories = async (forceRefresh = false) => {
     try {
+      // 1. Check local cache to avoid Firestore reads on tab switch
+      if (!forceRefresh) {
+        const cached = sessionStorage.getItem('admin_categories_cache');
+        if (cached) {
+          try {
+            const parsed = JSON.parse(cached);
+            setCategories(parsed);
+            setLoading(false);
+            return;
+          } catch (e) {
+            console.error('Cache parse error:', e);
+          }
+        }
+      }
+
       setLoading(true);
       const q = query(collection(db, 'categories'), orderBy('createdAt', 'desc'));
       const querySnapshot = await getDocs(q);
       const fetched = [];
       querySnapshot.forEach((docSnap) => {
-        fetched.push({ id: docSnap.id, ...docSnap.data() });
+        const data = docSnap.data();
+        // Convert serverTimestamp if present for serialization
+        const createdAtVal = data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : data.createdAt;
+        fetched.push({ id: docSnap.id, ...data, createdAt: createdAtVal });
       });
+      
       setCategories(fetched);
+      sessionStorage.setItem('admin_categories_cache', JSON.stringify(fetched));
     } catch (err) {
       console.error('Error fetching categories:', err);
     } finally {
@@ -58,9 +78,11 @@ const Categories = () => {
     const newStatus = currentStatus === 'inactive' ? 'active' : 'inactive';
     try {
       await updateDoc(doc(db, 'categories', categoryId), { status: newStatus });
-      setCategories(prev =>
-        prev.map(c => c.id === categoryId ? { ...c, status: newStatus } : c)
-      );
+      setCategories(prev => {
+        const updated = prev.map(c => c.id === categoryId ? { ...c, status: newStatus } : c);
+        sessionStorage.setItem('admin_categories_cache', JSON.stringify(updated));
+        return updated;
+      });
     } catch (err) {
       console.error('Error updating status:', err);
       alert('Failed to update category status.');
@@ -71,11 +93,49 @@ const Categories = () => {
     if (!window.confirm('Are you sure you want to delete this category?')) return;
     try {
       await deleteDoc(doc(db, 'categories', categoryId));
-      setCategories(prev => prev.filter(c => c.id !== categoryId));
+      setCategories(prev => {
+        const updated = prev.filter(c => c.id !== categoryId);
+        sessionStorage.setItem('admin_categories_cache', JSON.stringify(updated));
+        return updated;
+      });
     } catch (err) {
       console.error('Error deleting category:', err);
       alert('Failed to delete category.');
     }
+  };
+
+  const convertToWebP = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target.result;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                const newFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".webp", {
+                  type: 'image/webp',
+                });
+                resolve(newFile);
+              } else {
+                reject(new Error("Canvas to Blob failed"));
+              }
+            },
+            'image/webp',
+            0.85
+          );
+        };
+        img.onerror = (error) => reject(error);
+      };
+      reader.onerror = (error) => reject(error);
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -88,10 +148,19 @@ const Categories = () => {
     try {
       setIsAdding(true);
       setError('');
-      
+      // Convert to WebP
+      let finalFile = imageFile;
+      try {
+        if (imageFile.type.startsWith('image/') && !imageFile.type.includes('webp')) {
+          finalFile = await convertToWebP(imageFile);
+        }
+      } catch (conversionError) {
+        console.error("WebP conversion failed, using original file:", conversionError);
+      }
+
       // 1. Upload Image
-      const storageRef = ref(storage, `categories/${Date.now()}_${imageFile.name}`);
-      const uploadTask = uploadBytesResumable(storageRef, imageFile);
+      const storageRef = ref(storage, `categories/${Date.now()}_${finalFile.name}`);
+      const uploadTask = uploadBytesResumable(storageRef, finalFile);
 
       uploadTask.on(
         'state_changed',
@@ -111,7 +180,6 @@ const Categories = () => {
           // 3. Save to Firestore
           await addDoc(collection(db, 'categories'), {
             name: name.trim(),
-            malayalamName: malayalamName.trim(),
             imageUrl: downloadURL,
             status: status || 'active',
             createdAt: serverTimestamp()
@@ -119,7 +187,6 @@ const Categories = () => {
 
           // Reset Form
           setName('');
-          setMalayalamName('');
           setStatus('active');
           setImageFile(null);
           setImagePreview(null);
@@ -128,7 +195,7 @@ const Categories = () => {
           
           setIsAdding(false);
           setIsFormVisible(false);
-          fetchCategories();
+          fetchCategories(true);
         }
       );
 
@@ -245,37 +312,13 @@ const Categories = () => {
 
                 <div>
                   <label style={{ display: 'block', marginBottom: '6px', color: '#334155', fontSize: '13px', fontWeight: '600' }}>
-                    Category Name (English) *
+                    Category Name *
                   </label>
                   <input 
                     type="text" 
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="e.g., Fresh Fish & Marine"
-                    disabled={isAdding}
-                    style={{
-                      width: '100%',
-                      padding: '10px 14px',
-                      background: '#ffffff',
-                      border: '1px solid #cbd5e1',
-                      borderRadius: '8px',
-                      color: '#0f172a',
-                      fontSize: '14px',
-                      outline: 'none',
-                      boxSizing: 'border-box'
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', marginBottom: '6px', color: '#334155', fontSize: '13px', fontWeight: '600' }}>
-                    Category Name (Malayalam) [Optional]
-                  </label>
-                  <input 
-                    type="text" 
-                    value={malayalamName}
-                    onChange={(e) => setMalayalamName(e.target.value)}
-                    placeholder="e.g., പുതിയ മത്സ്യം"
                     disabled={isAdding}
                     style={{
                       width: '100%',
@@ -400,100 +443,96 @@ const Categories = () => {
           </div>
         )}
 
-        {/* Existing Categories Grid */}
-        {loading ? (
-          <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>Loading categories...</div>
-        ) : categories.length === 0 ? (
-          <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>No categories found. Add your first category above.</div>
-        ) : (
-          <div style={{ 
-            display: 'grid', 
-            gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', 
-            gap: '20px',
-            marginTop: '20px'
-          }}>
-            {categories.map(category => {
-              const isActive = (category.status || 'active') === 'active';
+        {/* Categories Table View */}
+        <div className="custom-table-wrapper" style={{ marginTop: '20px' }}>
+          <table className="custom-table">
+            <thead>
+              <tr>
+                <th>Category Image & Name</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan="3" style={{ textAlign: 'center', padding: '30px', color: '#64748b' }}>
+                    Loading categories...
+                  </td>
+                </tr>
+              ) : categories.length > 0 ? (
+                categories.map((category) => {
+                  const isActive = (category.status || 'active') === 'active';
+                  const currentStatus = isActive ? 'active' : 'suspended';
 
-              return (
-                <div key={category.id} style={{
-                  background: '#ffffff',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '16px',
-                  overflow: 'hidden',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  transition: 'border-color 0.2s ease'
-                }}>
-                  <div style={{ height: '140px', background: '#f8fafc', width: '100%', position: 'relative' }}>
-                    {category.imageUrl ? (
-                      <img src={category.imageUrl} alt={category.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    ) : (
-                      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>No Image</div>
-                    )}
-                    <span style={{
-                      position: 'absolute',
-                      top: '10px',
-                      right: '10px',
-                      padding: '4px 10px',
-                      borderRadius: '12px',
-                      fontSize: '11px',
-                      fontWeight: '600',
-                      background: isActive ? '#ecfdf5' : '#f1f5f9',
-                      color: isActive ? '#059669' : '#64748b',
-                      border: isActive ? '1px solid #a7f3d0' : '1px solid #cbd5e1'
-                    }}>
-                      {isActive ? 'Active' : 'Inactive'}
-                    </span>
-                  </div>
-
-                  <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', flex: 1, justifyContent: 'space-between', gap: '12px' }}>
-                    <div>
-                      <div style={{ fontWeight: '600', fontSize: '15px', color: '#0f172a', marginBottom: '2px' }}>{category.name}</div>
-                      {category.malayalamName && (
-                        <div style={{ fontSize: '13px', color: '#64748b' }}>{category.malayalamName}</div>
-                      )}
-                    </div>
-
-                    <div style={{ display: 'flex', gap: '8px', paddingTop: '10px', borderTop: '1px solid #f1f5f9' }}>
-                      <button
-                        onClick={() => handleToggleStatus(category.id, category.status || 'active')}
-                        style={{
-                          flex: 1,
-                          padding: '6px 10px',
-                          borderRadius: '6px',
-                          border: '1px solid #cbd5e1',
-                          background: '#ffffff',
-                          color: isActive ? '#dc2626' : '#059669',
-                          fontSize: '12px',
-                          fontWeight: '600',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        {isActive ? 'Deactivate' : 'Activate'}
-                      </button>
-                      <button
-                        onClick={() => handleDeleteCategory(category.id)}
-                        style={{
-                          padding: '6px 10px',
-                          borderRadius: '6px',
-                          border: '1px solid #fecaca',
-                          background: '#fef2f2',
-                          color: '#dc2626',
-                          fontSize: '12px',
-                          fontWeight: '600',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                  return (
+                    <tr key={category.id}>
+                      <td>
+                        <div className="customer-cell" style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                          <div style={{ width: '48px', height: '48px', borderRadius: '10px', overflow: 'hidden', background: '#f8fafc', border: '1px solid #e2e8f0', flexShrink: 0 }}>
+                            {category.imageUrl ? (
+                              <img src={category.imageUrl} alt={category.name} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            ) : (
+                              <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: '11px' }}>No Image</div>
+                            )}
+                          </div>
+                          <div style={{ fontWeight: '600', color: '#0f172a', fontSize: '14px' }}>
+                            {category.name}
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <span className={`badge ${currentStatus}`}>
+                          {isActive ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button
+                            onClick={() => handleToggleStatus(category.id, category.status || 'active')}
+                            style={{
+                              padding: '6px 12px',
+                              borderRadius: '6px',
+                              border: isActive ? '1px solid #cbd5e1' : 'none',
+                              background: isActive ? '#ffffff' : '#2ed573',
+                              color: isActive ? '#dc2626' : '#ffffff',
+                              fontSize: '12px',
+                              fontWeight: '600',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            {isActive ? 'Deactivate' : 'Activate'}
+                          </button>
+                          <button
+                            onClick={() => handleDeleteCategory(category.id)}
+                            style={{
+                              padding: '6px 12px',
+                              borderRadius: '6px',
+                              border: '1px solid #ff4757',
+                              background: 'transparent',
+                              color: '#ff4757',
+                              fontSize: '12px',
+                              fontWeight: '600',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td colSpan="3" style={{ textAlign: 'center', padding: '30px', color: '#64748b' }}>
+                    No categories found. Add your first category above.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

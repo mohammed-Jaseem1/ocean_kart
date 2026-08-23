@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:convert';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'cart_screen.dart';
 import 'profile_screen.dart';
 import 'checkout_screen.dart';
+import '../constants/kerala_places.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -18,20 +20,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String _searchQuery = '';
   String _selectedCategory = '';
   String _selectedShopId = '';
+  String _selectedLocation = 'Kochi';
 
   final Color _navyBlue = const Color(0xFFF8FAFC);
   final Color _cardColor = Colors.white;
   final Color _lightBlue = const Color(0xFF00B4D8);
   final Color _textColor = const Color(0xFF0F172A);
 
-  // Mock Data
-  final List<Map<String, dynamic>> _categories = [
-    {'name': 'Fish', 'icon': Icons.set_meal},
-    {'name': 'Prawns', 'icon': Icons.water},
-    {'name': 'Crab', 'icon': Icons.bug_report},
-    {'name': 'Offers', 'icon': Icons.local_offer},
-  ];
 
+
+
+  late Stream<QuerySnapshot> _productsStream;
+  late Stream<QuerySnapshot> _shopsStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _productsStream = FirebaseFirestore.instance
+        .collectionGroup('products')
+        .snapshots();
+    _shopsStream = FirebaseFirestore.instance
+        .collection('users')
+        .where('role', isEqualTo: 'Shopkeeper')
+        .where('status', isEqualTo: 'active')
+        .snapshots();
+  }
 
   Future<void> _addToCart(DocumentSnapshot doc) async {
     final user = FirebaseAuth.instance.currentUser;
@@ -91,7 +104,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
       backgroundColor: _navyBlue,
       bottomNavigationBar: _buildBottomNav(),
       body: SafeArea(
-        child: _selectedIndex == 0 ? _buildDeliveryPage() : _buildOrdersPage(),
+        child: IndexedStack(
+          index: _selectedIndex,
+          children: [
+            _buildDeliveryPage(),
+            _buildOrdersPage(),
+          ],
+        ),
       ),
     );
   }
@@ -144,9 +163,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ),
         StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collectionGroup('products')
-              .snapshots(),
+          stream: _productsStream,
           builder: (context, snapshot) {
             if (!snapshot.hasData) {
               return const SliverToBoxAdapter(
@@ -487,10 +504,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       children: [
         Container(
           width: double.infinity,
-          height: 380,
+          height: 340,
           decoration: BoxDecoration(
             image: DecorationImage(
-              image: const NetworkImage(
+              image: const CachedNetworkImageProvider(
                 'https://images.unsplash.com/photo-1615141982883-c7ad0e69fd62?q=80&w=1000&auto=format&fit=crop',
               ),
               fit: BoxFit.cover,
@@ -503,21 +520,95 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
         Positioned(
           top: 16,
+          left: 16,
           right: 16,
           child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _buildCartIcon(),
-              const SizedBox(width: 16),
-              GestureDetector(
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const ProfileScreen()),
+              // Top Location Selector
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.15),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
-                child: CircleAvatar(
-                  backgroundColor: Colors.white,
-                  radius: 20,
-                  child: Icon(Icons.person, color: _lightBlue),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.location_on, color: Colors.redAccent, size: 18),
+                    const SizedBox(width: 4),
+                    PopupMenuButton<String>(
+                      position: PopupMenuPosition.under,
+                      color: Colors.white,
+                      surfaceTintColor: Colors.white,
+                      constraints: const BoxConstraints(maxHeight: 300, maxWidth: 200),
+                      onSelected: (String newValue) {
+                        setState(() {
+                          _selectedLocation = newValue;
+                        });
+                      },
+                      itemBuilder: (BuildContext context) {
+                        return keralaPlaces.map((String place) {
+                          return PopupMenuItem<String>(
+                            value: place,
+                            height: 38,
+                            child: Text(
+                              place,
+                              style: const TextStyle(color: Colors.black87, fontSize: 13),
+                            ),
+                          );
+                        }).toList();
+                      },
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 100),
+                            child: Text(
+                              keralaPlaces.contains(_selectedLocation)
+                                  ? _selectedLocation
+                                  : keralaPlaces.first,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.black87,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                          Icon(Icons.arrow_drop_down, color: Colors.grey.shade600),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
+              ),
+
+              // Cart & Profile Icons
+              Row(
+                children: [
+                  _buildCartIcon(),
+                  const SizedBox(width: 12),
+                  GestureDetector(
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                    ),
+                    child: CircleAvatar(
+                      backgroundColor: Colors.white,
+                      radius: 20,
+                      child: Icon(Icons.person, color: _lightBlue),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -554,49 +645,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  children: [
-                    const SizedBox(width: 16),
-                    const Icon(Icons.location_on, color: Colors.redAccent),
-                    const SizedBox(width: 8),
-                    const Text(
-                      'Location',
-                      style: TextStyle(
-                        color: Colors.black87,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Icon(Icons.arrow_drop_down, color: Colors.grey.shade600),
-                    Container(
-                      width: 1,
-                      height: 24,
-                      color: Colors.grey.shade300,
-                      margin: const EdgeInsets.symmetric(horizontal: 12),
-                    ),
-                    Expanded(
-                      child: TextField(
-                        onChanged: (val) {
-                          setState(() {
-                            _searchQuery = val.trim();
-                          });
-                        },
-                        style: const TextStyle(
-                          color: Colors.black87,
-                        ), // Fix white text
-                        decoration: InputDecoration(
-                          hintText: 'Search for fish, prawns, etc.',
-                          hintStyle: TextStyle(
-                            color: Colors.grey.shade400,
-                            fontSize: 15,
-                          ),
-                          border: InputBorder.none,
-                          icon: Icon(Icons.search, color: Colors.grey.shade400),
-                        ),
-                      ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.1),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
                     ),
                   ],
+                ),
+                child: TextField(
+                  onChanged: (val) {
+                    setState(() {
+                      _searchQuery = val.trim();
+                    });
+                  },
+                  style: const TextStyle(
+                    color: Colors.black87,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'Search for fish, prawns, etc.',
+                    hintStyle: TextStyle(
+                      color: Colors.grey.shade400,
+                      fontSize: 15,
+                    ),
+                    border: InputBorder.none,
+                    prefixIcon: Icon(Icons.search, color: Colors.grey.shade400),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 16),
+                  ),
                 ),
               ),
             ],
@@ -660,60 +735,94 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _buildCategories() {
     return SizedBox(
       height: 100,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        itemCount: _categories.length,
-        itemBuilder: (context, index) {
-          final cat = _categories[index];
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Column(
-              children: [
-                Container(
-                  width: 65,
-                  height: 65,
-                  decoration: BoxDecoration(
-                    color: _selectedCategory == cat['name']
-                        ? _lightBlue
-                        : _cardColor,
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: _lightBlue.withValues(alpha: 0.3),
-                      width: 1,
-                    ),
-                  ),
-                  child: IconButton(
-                    icon: Icon(
-                      cat['icon'],
-                      color: _selectedCategory == cat['name']
-                          ? Colors.white
-                          : _lightBlue,
-                      size: 30,
-                    ),
-                    onPressed: () {
-                      setState(() {
-                        if (_selectedCategory == cat['name']) {
-                          _selectedCategory = ''; // Deselect
-                        } else {
-                          _selectedCategory = cat['name'] as String;
-                        }
-                      });
-                    },
+      child: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('categories')
+            .where('status', isEqualTo: 'active')
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: SizedBox(
+                width: 30,
+                height: 30,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            );
+          }
+
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            return const SizedBox();
+          }
+
+          final docs = snapshot.data!.docs;
+
+          return ListView.builder(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            itemCount: docs.length,
+            itemBuilder: (context, index) {
+              final cat = docs[index].data() as Map<String, dynamic>;
+              final name = cat['name']?.toString() ?? '';
+              final imageUrl = cat['imageUrl']?.toString() ?? '';
+              final isSelected = _selectedCategory == name;
+
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      if (_selectedCategory == name) {
+                        _selectedCategory = ''; // Deselect
+                      } else {
+                        _selectedCategory = name;
+                      }
+                    });
+                  },
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 65,
+                        height: 65,
+                        decoration: BoxDecoration(
+                          color: _cardColor,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: isSelected
+                                ? _lightBlue
+                                : _lightBlue.withValues(alpha: 0.3),
+                            width: isSelected ? 3 : 1,
+                          ),
+                          image: imageUrl.isNotEmpty
+                              ? DecorationImage(
+                                  image: CachedNetworkImageProvider(imageUrl),
+                                  fit: BoxFit.cover,
+                                )
+                              : null,
+                        ),
+                        child: imageUrl.isEmpty
+                            ? Icon(
+                                Icons.category,
+                                color: _lightBlue,
+                                size: 30,
+                              )
+                            : null,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        name,
+                        style: TextStyle(
+                          color: _textColor,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  cat['name'],
-                  style: TextStyle(
-                    color: _textColor,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
+              );
+            },
           );
         },
       ),
@@ -722,11 +831,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _buildTopBrands() {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('users')
-          .where('role', isEqualTo: 'Shopkeeper')
-          .where('status', isEqualTo: 'active')
-          .snapshots(),
+      stream: _shopsStream,
       builder: (context, snapshot) {
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return const SizedBox();
@@ -849,7 +954,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   height: double.infinity,
                   child: imageUrl != null && imageUrl.isNotEmpty
                       ? (imageUrl.startsWith('http')
-                            ? Image.network(imageUrl, fit: BoxFit.cover)
+                            ? CachedNetworkImage(imageUrl: imageUrl, fit: BoxFit.cover)
                             : Image.memory(
                                 const Base64Decoder().convert(imageUrl),
                                 fit: BoxFit.cover,
