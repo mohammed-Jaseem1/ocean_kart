@@ -192,12 +192,12 @@ const Inventory = () => {
                         </div>
                         <div>
                           <div style={{ fontWeight: '600' }}>{product.name || 'Unnamed'}</div>
-                          <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>{product.unit || ''}</div>
+                          <div style={{ fontSize: '11px', color: '#64748b' }}>{product.unit || ''}</div>
                         </div>
                       </div>
                     </td>
                     <td>
-                      <span style={{ fontWeight: '500', color: '#00b4d8' }}>{product.shopName}</span>
+                      <span style={{ fontWeight: '500', color: '#0284c7' }}>{product.shopName}</span>
                     </td>
                     <td>{product.category || 'General'}</td>
 
@@ -210,9 +210,9 @@ const Inventory = () => {
                           onChange={(e) => setEditForm({ ...editForm, pricePerKg: e.target.value })}
                           style={{
                             width: '80px',
-                            background: '#334155',
-                            border: '1px solid #475569',
-                            color: '#fff',
+                            background: '#ffffff',
+                            border: '1px solid #cbd5e1',
+                            color: '#0f172a',
                             padding: '4px 8px',
                             borderRadius: '4px'
                           }}
@@ -248,16 +248,16 @@ const Inventory = () => {
                             value={editForm.stockAction}
                             onChange={(e) => setEditForm({...editForm, stockAction: e.target.value})}
                             style={{
-                              background: '#334155',
-                              border: '1px solid #475569',
-                              color: '#fff',
+                              background: '#ffffff',
+                              border: '1px solid #cbd5e1',
+                              color: '#0f172a',
                               padding: '4px',
                               borderRadius: '4px',
                               fontSize: '12px'
                             }}
                           >
-                            <option value="add" style={{ color: '#000' }}>Add</option>
-                            <option value="reduce" style={{ color: '#000' }}>Reduce</option>
+                            <option value="add">Add</option>
+                            <option value="reduce">Reduce</option>
                           </select>
                           <input 
                             type="number"
@@ -266,9 +266,9 @@ const Inventory = () => {
                             onChange={(e) => setEditForm({...editForm, stockAmount: e.target.value})}
                             style={{
                               width: '60px',
-                              background: '#334155',
-                              border: '1px solid #475569',
-                              color: '#fff',
+                              background: '#ffffff',
+                              border: '1px solid #cbd5e1',
+                              color: '#0f172a',
                               padding: '4px 8px',
                               borderRadius: '4px',
                               fontSize: '12px'

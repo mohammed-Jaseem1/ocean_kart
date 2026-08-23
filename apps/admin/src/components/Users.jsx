@@ -133,9 +133,7 @@ const Users = () => {
                           <div style={{ fontWeight: '600', color: '#0f172a' }}>
                             {u.name || 'OceanKart User'}
                           </div>
-                          <div style={{ fontSize: '11px', color: '#64748b' }}>
-                            ID: {u.id.substring(0, 8)}
-                          </div>
+
                         </div>
                       </div>
                     </td>

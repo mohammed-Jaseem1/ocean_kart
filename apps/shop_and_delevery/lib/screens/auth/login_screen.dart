@@ -85,7 +85,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
       final user = userCredential.user;
       if (user != null) {
-        if (!user.emailVerified) {
+        await user.reload();
+        await user.getIdToken(true);
+        final freshUser = FirebaseAuth.instance.currentUser;
+
+        if (freshUser == null || !freshUser.emailVerified) {
           await FirebaseAuth.instance.signOut();
           setState(() {
             _errorMessage = 'Your email is not verified yet. Please check your inbox and verify your email to log in.';

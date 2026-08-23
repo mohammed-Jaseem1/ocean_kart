@@ -136,9 +136,7 @@ const DeliveryBoys = () => {
                           <div style={{ fontWeight: '600', color: '#0f172a' }}>
                             {partner.name || 'Delivery Rider'}
                           </div>
-                          <div style={{ fontSize: '11px', color: '#64748b' }}>
-                            ID: {partner.id.substring(0, 8)}
-                          </div>
+
                         </div>
                       </div>
                     </td>

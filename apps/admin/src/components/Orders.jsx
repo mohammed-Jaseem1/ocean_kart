@@ -87,7 +87,7 @@ const Orders = () => {
                     </div>
                     <div>
                       <div style={{ fontWeight: '600' }}>{order.customerName || order.userName || 'Unknown'}</div>
-                      <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>{order.customerEmail || order.userEmail || ''}</div>
+                      <div style={{ fontSize: '11px', color: '#64748b' }}>{order.customerEmail || order.userEmail || ''}</div>
                     </div>
                   </div>
                 </td>

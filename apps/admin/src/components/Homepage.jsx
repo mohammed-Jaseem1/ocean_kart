@@ -3,6 +3,7 @@ import ShopOwners from './ShopOwners';
 import Users from './Users';
 import Revenue from './Revenue';
 import DeliveryBoys from './DeliveryBoys';
+import Categories from './Categories';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import './Homepage.css';
@@ -15,7 +16,7 @@ const Homepage = ({ user, onSignOut }) => {
     totalOrders: 0,
     activeUsers: 0,
     conversionRate: 0,
-    recentOrders: []
+    recentSignUps: []
   });
 
   useEffect(() => {
@@ -28,39 +29,36 @@ const Homepage = ({ user, onSignOut }) => {
     let activeUsersCount = 0;
     let revenue = 0;
     let ordersCount = 0;
-    let fetchedOrders = [];
+    let fetchedUsers = [];
 
-    // 1. Fetch Active Users Count
+    // 1. Fetch Users & Recent Sign-ups
     try {
-      const usersQuery = query(collection(db, 'users'), where('status', '==', 'active'));
-      const usersSnapshot = await getDocs(usersQuery);
-      activeUsersCount = usersSnapshot.size;
-    } catch (err) {
-      console.warn("Active users fetch warning:", err.message);
-      try {
-        const allUsersSnap = await getDocs(collection(db, 'users'));
-        activeUsersCount = allUsersSnap.size;
-      } catch (fallbackErr) {
-        console.warn("Users fallback fetch warning:", fallbackErr.message);
-      }
-    }
-
-    // 2. Fetch Orders
-    try {
-      const ordersSnapshot = await getDocs(collection(db, 'orders'));
-      ordersSnapshot.forEach(doc => {
-        const data = doc.data();
-        revenue += parseFloat(data.amount || data.totalAmount || 0);
-        fetchedOrders.push({ id: doc.id, ...data });
+      const usersSnapshot = await getDocs(collection(db, 'users'));
+      usersSnapshot.forEach(docSnap => {
+        const data = docSnap.data();
+        if (data.status === 'active') {
+          activeUsersCount++;
+        }
+        fetchedUsers.push({ id: docSnap.id, ...data });
       });
 
-      ordersCount = fetchedOrders.length;
-
-      fetchedOrders = fetchedOrders.sort((a, b) => {
-        const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(0);
-        const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(0);
+      fetchedUsers = fetchedUsers.sort((a, b) => {
+        const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : (a.createdAt ? new Date(a.createdAt) : new Date(0));
+        const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : (b.createdAt ? new Date(b.createdAt) : new Date(0));
         return dateB - dateA;
       }).slice(0, 5);
+    } catch (err) {
+      console.warn("Users fetch warning:", err.message);
+    }
+
+    // 2. Fetch Orders for KPIs
+    try {
+      const ordersSnapshot = await getDocs(collection(db, 'orders'));
+      ordersSnapshot.forEach(docSnap => {
+        const data = docSnap.data();
+        revenue += parseFloat(data.amount || data.totalAmount || 0);
+        ordersCount++;
+      });
     } catch (err) {
       console.warn("Orders fetch warning:", err.message);
     }
@@ -70,7 +68,7 @@ const Homepage = ({ user, onSignOut }) => {
       totalOrders: ordersCount,
       activeUsers: activeUsersCount,
       conversionRate: ordersCount > 0 && activeUsersCount > 0 ? (ordersCount / activeUsersCount * 100).toFixed(2) : 0,
-      recentOrders: fetchedOrders
+      recentSignUps: fetchedUsers
     });
   };
 
@@ -115,6 +113,14 @@ const Homepage = ({ user, onSignOut }) => {
         </svg>
       )
     },
+    {
+      name: 'Categories',
+      icon: (
+        <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+        </svg>
+      )
+    },
   ];
 
   const userInitial = user?.email ? user.email.charAt(0).toUpperCase() : 'A';
@@ -147,13 +153,6 @@ const Homepage = ({ user, onSignOut }) => {
         </div>
 
         <div className="sidebar-footer">
-          <div className="user-profile">
-            <div className="avatar">{userInitial}</div>
-            <div className="user-info">
-              <span className="user-name">{userDisplayName}</span>
-              <span className="user-role">Super Admin</span>
-            </div>
-          </div>
           {onSignOut && (
             <button
               onClick={onSignOut}
@@ -198,6 +197,8 @@ const Homepage = ({ user, onSignOut }) => {
                 ? 'Financial & Revenue Analytics'
                 : activeMenu === 'Delivery Boys'
                 ? 'Delivery Personnel'
+                : activeMenu === 'Categories'
+                ? 'Manage Product Categories'
                 : 'Dashboard Overview'}
             </h1>
             <p>
@@ -209,18 +210,13 @@ const Homepage = ({ user, onSignOut }) => {
                 ? 'Track sales revenue, profit commissions, and transaction logs.'
                 : activeMenu === 'Delivery Boys'
                 ? 'Monitor delivery partners, active orders, and vehicle verification.'
+                : activeMenu === 'Categories'
+                ? 'Create and manage global product categories.'
                 : 'Welcome back, here is what is happening with OceanKart today.'}
             </p>
           </div>
 
           <div className="header-actions">
-            <div className="search-bar">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
-              <input type="text" placeholder="Search transactions, partners..." />
-            </div>
-
             <button className="icon-btn" aria-label="Notifications">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0" />
@@ -238,6 +234,8 @@ const Homepage = ({ user, onSignOut }) => {
           <Revenue />
         ) : activeMenu === 'Delivery Boys' ? (
           <DeliveryBoys />
+        ) : activeMenu === 'Categories' ? (
+          <Categories />
         ) : (
           <>
             {/* KPI Metrics Widgets */}
@@ -303,7 +301,7 @@ const Homepage = ({ user, onSignOut }) => {
                   <h2>Weekly Sales Performance</h2>
                   <div className="chart-legend">
                     <div className="legend-item">
-                      <span className="legend-color" style={{ background: '#00b4d8' }}></span>
+                      <span className="legend-color" style={{ background: '#0284c7' }}></span>
                       <span>Direct Sales</span>
                     </div>
                   </div>
@@ -311,34 +309,34 @@ const Homepage = ({ user, onSignOut }) => {
 
                 <div className="chart-container">
                   <svg className="svg-chart" viewBox="0 0 600 200">
-                    <line x1="0" y1="40" x2="600" y2="40" stroke="rgba(255,255,255,0.04)" strokeWidth="1" />
-                    <line x1="0" y1="90" x2="600" y2="90" stroke="rgba(255,255,255,0.04)" strokeWidth="1" />
-                    <line x1="0" y1="140" x2="600" y2="140" stroke="rgba(255,255,255,0.04)" strokeWidth="1" />
-                    <line x1="0" y1="190" x2="600" y2="190" stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
+                    <line x1="0" y1="40" x2="600" y2="40" stroke="#f1f5f9" strokeWidth="1" />
+                    <line x1="0" y1="90" x2="600" y2="90" stroke="#f1f5f9" strokeWidth="1" />
+                    <line x1="0" y1="140" x2="600" y2="140" stroke="#f1f5f9" strokeWidth="1" />
+                    <line x1="0" y1="190" x2="600" y2="190" stroke="#e2e8f0" strokeWidth="1" />
 
                     <path
                       d="M 20 180 Q 110 120 200 130 T 380 70 T 580 40 L 580 190 L 20 190 Z"
                       fill="url(#chartGradient)"
-                      opacity="0.15"
+                      opacity="0.12"
                     />
 
                     <path
                       d="M 20 180 Q 110 120 200 130 T 380 70 T 580 40"
                       fill="none"
-                      stroke="#00b4d8"
-                      strokeWidth="3.5"
+                      stroke="#0284c7"
+                      strokeWidth="3"
                       strokeLinecap="round"
                     />
 
-                    <circle cx="20" cy="180" r="5" fill="#00b4d8" stroke="#060b14" strokeWidth="2" />
-                    <circle cx="200" cy="130" r="5" fill="#00b4d8" stroke="#060b14" strokeWidth="2" />
-                    <circle cx="380" cy="70" r="5" fill="#00b4d8" stroke="#060b14" strokeWidth="2" />
-                    <circle cx="580" cy="40" r="5" fill="#00b4d8" stroke="#060b14" strokeWidth="2" />
+                    <circle cx="20" cy="180" r="5" fill="#0284c7" stroke="#ffffff" strokeWidth="2" />
+                    <circle cx="200" cy="130" r="5" fill="#0284c7" stroke="#ffffff" strokeWidth="2" />
+                    <circle cx="380" cy="70" r="5" fill="#0284c7" stroke="#ffffff" strokeWidth="2" />
+                    <circle cx="580" cy="40" r="5" fill="#0284c7" stroke="#ffffff" strokeWidth="2" />
 
                     <defs>
                       <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#00b4d8" />
-                        <stop offset="100%" stopColor="#00b4d8" stopOpacity="0" />
+                        <stop offset="0%" stopColor="#0284c7" />
+                        <stop offset="100%" stopColor="#0284c7" stopOpacity="0" />
                       </linearGradient>
                     </defs>
                   </svg>
@@ -352,26 +350,26 @@ const Homepage = ({ user, onSignOut }) => {
                 </div>
                 <div className="donut-wrapper">
                   <svg width="150" height="150" viewBox="0 0 36 36">
-                    <circle cx="18" cy="18" r="15.915" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="3.5" />
-                    <circle cx="18" cy="18" r="15.915" fill="none" stroke="#00b4d8" strokeWidth="3.5"
+                    <circle cx="18" cy="18" r="15.915" fill="none" stroke="#f1f5f9" strokeWidth="3.5" />
+                    <circle cx="18" cy="18" r="15.915" fill="none" stroke="#0284c7" strokeWidth="3.5"
                       strokeDasharray="45 55" strokeDashoffset="25" />
-                    <circle cx="18" cy="18" r="15.915" fill="none" stroke="#2ed573" strokeWidth="3.5"
+                    <circle cx="18" cy="18" r="15.915" fill="none" stroke="#16a34a" strokeWidth="3.5"
                       strokeDasharray="35 65" strokeDashoffset="80" />
-                    <circle cx="18" cy="18" r="15.915" fill="none" stroke="#ffa502" strokeWidth="3.5"
+                    <circle cx="18" cy="18" r="15.915" fill="none" stroke="#d97706" strokeWidth="3.5"
                       strokeDasharray="20 80" strokeDashoffset="15" />
                   </svg>
 
                   <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-                      <span style={{ color: '#00b4d8' }}>● Groceries & Supplies</span>
+                      <span style={{ color: '#0284c7' }}>● Groceries & Supplies</span>
                       <span style={{ fontWeight: '600' }}>45%</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-                      <span style={{ color: '#2ed573' }}>● Fresh Marine Foods</span>
+                      <span style={{ color: '#16a34a' }}>● Fresh Marine Foods</span>
                       <span style={{ fontWeight: '600' }}>35%</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-                      <span style={{ color: '#ffa502' }}>● Electronics & Accessories</span>
+                      <span style={{ color: '#d97706' }}>● Electronics & Accessories</span>
                       <span style={{ fontWeight: '600' }}>20%</span>
                     </div>
                   </div>
@@ -379,49 +377,74 @@ const Homepage = ({ user, onSignOut }) => {
               </div>
             </section>
 
-            {/* Recent Orders Section */}
+            {/* Recent Sign-ups Section */}
             <section className="table-card">
               <div className="table-header">
-                <h2>Recent Orders</h2>
+                <h2>Recent Sign-ups</h2>
               </div>
 
               <div className="custom-table-wrapper">
                 <table className="custom-table">
                   <thead>
                     <tr>
-                      <th>Order ID</th>
-                      <th>Customer</th>
-                      <th>Product</th>
-                      <th>Amount</th>
+                      <th>User</th>
+                      <th>Plan / Role</th>
+                      <th>Joined</th>
                       <th>Status</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {dashboardData.recentOrders.length > 0 ? dashboardData.recentOrders.map((order) => (
-                      <tr key={order.id}>
-                        <td style={{ fontWeight: '600', color: '#00b4d8' }}>{order.orderId || order.id.substring(0, 8)}</td>
-                        <td>
-                          <div className="customer-cell">
-                            <div className="customer-avatar">
-                              {(order.customerName || order.userName || 'U').charAt(0).toUpperCase()}
+                    {dashboardData.recentSignUps.length > 0 ? dashboardData.recentSignUps.map((u) => {
+                      const joinedDate = u.createdAt?.toDate
+                        ? u.createdAt.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                        : u.createdAt
+                        ? new Date(u.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                        : 'Recent';
+
+                      const userRole = u.plan || u.role || 'Customer';
+                      const userStatus = (u.status || 'active').toLowerCase();
+
+                      return (
+                        <tr key={u.id}>
+                          <td>
+                            <div className="customer-cell">
+                              <div className="customer-avatar">
+                                {(u.name || u.shopName || u.email || 'U').charAt(0).toUpperCase()}
+                              </div>
+                              <div>
+                                <div style={{ fontWeight: '600', color: '#0f172a' }}>
+                                  {u.name || u.shopName || 'New User'}
+                                </div>
+                                <div style={{ fontSize: '11px', color: '#64748b' }}>
+                                  {u.email || (u.mobileNumber ? `+91 ${u.mobileNumber}` : '')}
+                                </div>
+                              </div>
                             </div>
-                            <div>
-                              <div style={{ fontWeight: '600' }}>{order.customerName || order.userName || 'Unknown'}</div>
-                              <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>{order.customerEmail || order.userEmail || ''}</div>
-                            </div>
-                          </div>
-                        </td>
-                        <td>{order.productName || order.product || 'Various'}</td>
-                        <td style={{ fontWeight: '600' }}>${parseFloat(order.amount || order.totalAmount || 0).toFixed(2)}</td>
-                        <td>
-                          <span className={`badge ${(order.status || 'pending').toLowerCase()}`}>
-                            {order.status || 'Pending'}
-                          </span>
-                        </td>
-                      </tr>
-                    )) : (
+                          </td>
+                          <td style={{ textTransform: 'uppercase', fontWeight: '600', fontSize: '12px' }}>
+                            <span style={{
+                              padding: '4px 8px',
+                              borderRadius: '6px',
+                              background: '#f1f5f9',
+                              color: '#334155',
+                              letterSpacing: '0.3px'
+                            }}>
+                              {userRole.replace('_', ' ')}
+                            </span>
+                          </td>
+                          <td style={{ color: '#64748b', fontSize: '13px', textTransform: 'uppercase', fontWeight: '500' }}>
+                            {joinedDate}
+                          </td>
+                          <td>
+                            <span className={`badge ${userStatus}`}>
+                              {userStatus === 'active' ? 'Active' : userStatus === 'pending' ? 'Pending' : 'Suspended'}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    }) : (
                       <tr>
-                        <td colSpan="5" style={{ textAlign: 'center', padding: '20px', color: '#64748b' }}>No recent orders found.</td>
+                        <td colSpan="4" style={{ textAlign: 'center', padding: '20px', color: '#64748b' }}>No recent sign-ups found.</td>
                       </tr>
                     )}
                   </tbody>

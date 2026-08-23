@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -146,66 +147,24 @@ class _RegistrationPageState extends State<RegistrationPage> {
         userData['selfieFile'] = _selfieFileName; 
       }
 
+      // Add emailVerified
+      userData['emailVerified'] = false;
+
       // Save to Firestore
       await FirebaseFirestore.instance.collection('users').doc(uid).set(userData);
 
-      // Sign out immediately so we don't automatically navigate to the dashboard
-      await FirebaseAuth.instance.signOut();
+      // Send Email Verification link
+      await userCredential.user!.sendEmailVerification();
 
+      // Show the polling verification dialog
       if (mounted) {
         showDialog(
           context: context,
           barrierDismissible: false,
           builder: (BuildContext context) {
-            return Dialog(
-              alignment: Alignment.topCenter,
-              insetPadding: const EdgeInsets.only(top: 60, left: 24, right: 24),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-              backgroundColor: const Color(0xFF132238),
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.check_circle_outline,
-                      color: Colors.greenAccent,
-                      size: 64,
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Registration Submitted!',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Your registration request has been submitted. You will be able to log in once an Admin approves your account.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.white.withValues(alpha: 0.7),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
+            return const EmailVerificationDialog();
           },
         );
-
-        // Automatically close dialog and navigate back after 4 seconds
-        Future.delayed(const Duration(seconds: 4), () {
-          if (mounted) {
-            Navigator.of(context).pop(); // Close dialog
-            Navigator.of(context).pop(); // Go back to login
-          }
-        });
       }
     } on FirebaseAuthException catch (e) {
       String errorMessage = 'An error occurred during registration.';
@@ -946,6 +905,151 @@ class _RegistrationPageState extends State<RegistrationPage> {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class EmailVerificationDialog extends StatefulWidget {
+  const EmailVerificationDialog({super.key});
+
+  @override
+  State<EmailVerificationDialog> createState() => _EmailVerificationDialogState();
+}
+
+class _EmailVerificationDialogState extends State<EmailVerificationDialog> {
+  Timer? _timer;
+  bool _isVerified = false;
+  String _userEmail = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _userEmail = FirebaseAuth.instance.currentUser?.email ?? '';
+    _timer = Timer.periodic(const Duration(seconds: 3), (timer) async {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        await user.reload();
+        await user.getIdToken(true);
+        final freshUser = FirebaseAuth.instance.currentUser;
+        if (freshUser != null && freshUser.emailVerified) {
+          timer.cancel();
+          if (mounted) {
+            setState(() {
+              _isVerified = true;
+            });
+            
+            // Update Firestore
+            await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+              'emailVerified': true,
+              // Note: We DO NOT change status to 'active'. It remains 'pending' for Admin approval.
+            });
+            
+            // Wait 2s for them to see success, then pop to root (AuthGate will take over)
+            Future.delayed(const Duration(milliseconds: 2000), () {
+              if (mounted) {
+                Navigator.of(context).popUntil((route) => route.isFirst);
+              }
+            });
+          }
+        }
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const primaryBlue = Color(0xFF00B4D8);
+    const darkBackground = Color(0xFF132238);
+
+    return Dialog(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+      ),
+      backgroundColor: darkBackground,
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: _isVerified 
+                    ? Colors.green.withValues(alpha: 0.1) 
+                    : primaryBlue.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                _isVerified ? Icons.check_circle_rounded : Icons.mark_email_unread_outlined,
+                color: _isVerified ? Colors.green : primaryBlue,
+                size: 48,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              _isVerified ? 'Email Verified!' : 'Verify Your Email',
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              _isVerified
+                  ? 'Your email has been verified successfully. Your account is now Pending Admin Approval. Redirecting...'
+                  : 'A verification link has been sent to:\n$_userEmail\n\nWe are waiting for you to click the link. This screen will update automatically.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.white.withValues(alpha: 0.7),
+                height: 1.4,
+              ),
+            ),
+            if (!_isVerified) ...[
+              const SizedBox(height: 24),
+              const CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(primaryBlue),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    // Sign out manually and pop to login if they want to cancel
+                    FirebaseAuth.instance.signOut();
+                    Navigator.of(context).pop();
+                    Navigator.of(context).pop();
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    foregroundColor: Colors.white.withValues(alpha: 0.7),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: const Text(
+                    'Cancel & Return to Login',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            ]
+          ],
         ),
       ),
     );

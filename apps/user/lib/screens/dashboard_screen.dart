@@ -561,7 +561,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     const Icon(Icons.location_on, color: Colors.redAccent),
                     const SizedBox(width: 8),
                     const Text(
-                      'Your Location',
+                      'Location',
                       style: TextStyle(
                         color: Colors.black87,
                         fontWeight: FontWeight.bold,
