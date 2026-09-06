@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'assigned_stores_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final bool isTab;
@@ -13,6 +14,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   bool _isLoading = true;
   Map<String, dynamic> _userData = {};
+  final User? currentUser = FirebaseAuth.instance.currentUser;
 
   static const Color _primaryCyan = Color(0xFF00B4D8);
   static const Color _textDark = Color(0xFF0F172A);
@@ -27,12 +29,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _loadProfile() async {
     try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user != null) {
-        final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      if (currentUser != null) {
+        final doc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(currentUser!.uid)
+            .get();
         if (doc.exists) {
+          final data = doc.data() as Map<String, dynamic>;
           setState(() {
-            _userData = doc.data() as Map<String, dynamic>;
+            _userData = data;
           });
         }
       }
@@ -98,10 +103,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           )
         : SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 18.0, vertical: 16.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
+                // Avatar & Name
                 Container(
                   padding: const EdgeInsets.all(4),
                   decoration: BoxDecoration(
@@ -109,9 +116,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     border: Border.all(color: _primaryCyan.withValues(alpha: 0.3), width: 3),
                   ),
                   child: const CircleAvatar(
-                    radius: 44,
+                    radius: 42,
                     backgroundColor: Color(0xFFF1F5F9),
-                    child: Icon(Icons.local_shipping_rounded, size: 40, color: _primaryCyan),
+                    child: Icon(Icons.two_wheeler_rounded, size: 42, color: _primaryCyan),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -121,33 +128,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 const SizedBox(height: 4),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   decoration: BoxDecoration(
                     color: _primaryCyan.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-                    _userData['role'] ?? 'Delivery Boy',
+                    _userData['role'] ?? 'Delivery Partner',
                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _primaryCyan),
                   ),
                 ),
                 const SizedBox(height: 20),
+
+                // Assigned Stores Section (Clickable / Expandable)
+                _buildAssignedShopsSection(),
+                const SizedBox(height: 16),
+
+                // Profile Info Details
                 _buildProfileItem(Icons.phone_outlined, 'Mobile Number', _userData['mobileNumber'] ?? 'N/A'),
                 _buildProfileItem(Icons.email_outlined, 'Email Address', _userData['email'] ?? 'N/A'),
                 _buildProfileItem(Icons.two_wheeler_outlined, 'Vehicle Number', _userData['vehicleNumber'] ?? 'N/A'),
                 _buildProfileItem(Icons.home_outlined, 'House Address', _userData['houseAddress'] ?? _userData['address'] ?? 'N/A'),
-                const SizedBox(height: 16),
+                const SizedBox(height: 24),
 
-                // Log Out Button inside Profile
+                // Log Out Button
                 SizedBox(
                   width: double.infinity,
-                  height: 46,
+                  height: 48,
                   child: ElevatedButton.icon(
                     onPressed: _handleSignOut,
                     icon: const Icon(Icons.logout_rounded, size: 18, color: Colors.white),
                     label: const Text(
                       'Log Out of Account',
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13.5),
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
                     ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFEF4444),
@@ -156,7 +169,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 28),
               ],
             ),
           );
@@ -181,6 +194,103 @@ class _ProfileScreenState extends State<ProfileScreen> {
         iconTheme: const IconThemeData(color: _textDark),
       ),
       body: content,
+    );
+  }
+
+  Widget _buildAssignedShopsSection() {
+    final List<String> assignedShopNames = List<String>.from(_userData['assignedShopNames'] ?? []);
+    final List<String> assignedShopIds = List<String>.from(_userData['assignedShopIds'] ?? []);
+    final storeCount = assignedShopIds.isNotEmpty ? assignedShopIds.length : assignedShopNames.length;
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _cardBorder),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const AssignedStoresScreen(),
+              ),
+            );
+          },
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: _primaryCyan.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.storefront_rounded, color: _primaryCyan, size: 22),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Assigned Stores',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: _textDark,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        storeCount > 0
+                            ? '$storeCount store${storeCount > 1 ? 's' : ''} assigned • Tap to view all'
+                            : 'Tap to view or request stores',
+                        style: const TextStyle(fontSize: 12, color: _textMuted),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: storeCount > 0
+                        ? const Color(0xFF10B981).withValues(alpha: 0.12)
+                        : const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '$storeCount Assigned',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.bold,
+                      color: storeCount > 0 ? const Color(0xFF10B981) : _textMuted,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: _primaryCyan,
+                  size: 22,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 

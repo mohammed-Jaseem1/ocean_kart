@@ -7,6 +7,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/shop_keeper/dashboard_screen.dart';
 import 'screens/delevery_partner/delivery_partner_dashboard.dart';
+import 'screens/common/location_setup_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -185,6 +186,13 @@ class _AuthGateState extends State<AuthGate> {
                 if (role == 'Delivery Boy' || role == 'delivery_partner') {
                   return const DeliveryPartnerDashboard();
                 } else if (role == 'Shopkeeper') {
+                  final isPinned = (userData?['locationPinned'] == true || userData?['isLocationPinned'] == true) &&
+                      userData?['latitude'] != null &&
+                      userData?['longitude'] != null;
+
+                  if (!isPinned) {
+                    return const LocationSetupScreen(role: 'Shopkeeper', isInitialSetup: true);
+                  }
                   return const DashboardScreen();
                 } else {
                   // If it's a customer or unknown role, deny access

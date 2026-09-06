@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, where, getDocs, doc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { db, app } from '../firebase';
+import { db, app, secondaryAuth } from '../firebase';
 import { keralaPlaces } from '../constants/keralaPlaces';
 
 const ShopOwners = () => {
@@ -56,11 +56,25 @@ const ShopOwners = () => {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
+    if (name === 'mobileNumber' || name === 'phone') {
+      const digitsOnly = value.replace(/\D/g, '').slice(0, 10);
+      setFormData(prev => ({ ...prev, [name]: digitsOnly }));
+      return;
+    }
+    if (name === 'pincode') {
+      const digitsOnly = value.replace(/\D/g, '').slice(0, 6);
+      setFormData(prev => ({ ...prev, [name]: digitsOnly }));
+      return;
+    }
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
   const handleAddSubmit = async (e) => {
     e.preventDefault();
+    if (!formData.mobileNumber || formData.mobileNumber.length !== 10) {
+      alert('Please enter a valid 10-digit phone number.');
+      return;
+    }
     setAddingUser(true);
     try {
       if (isEditing) {
@@ -95,7 +109,11 @@ const ShopOwners = () => {
           });
           uid = result.data.uid;
         } catch (fnErr) {
-          console.warn('Cloud Function createAdminUser unavailable, using secondary auth:', fnErr);
+          console.warn('Cloud Function createAdminUser error, trying fallback if applicable:', fnErr);
+          const errMsg = fnErr?.message || '';
+          if (errMsg.includes('already exists') || errMsg.includes('already in use') || errMsg.includes('phone-number-already-exists')) {
+            throw new Error(errMsg.replace('FirebaseError: ', ''));
+          }
           const userCred = await createUserWithEmailAndPassword(secondaryAuth, formData.email, formData.password);
           uid = userCred.user.uid;
           await signOut(secondaryAuth);
@@ -263,8 +281,20 @@ const ShopOwners = () => {
                   <input required name="name" value={formData.name} onChange={handleInputChange} placeholder="e.g. Ocean Supermarket" style={inputStyle} />
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <label style={{ fontSize: '12px', fontWeight: '600', color: '#475569' }}>Phone Number *</label>
-                  <input required name="mobileNumber" value={formData.mobileNumber} onChange={handleInputChange} placeholder="e.g. 9876543210" style={inputStyle} />
+                  <label style={{ fontSize: '12px', fontWeight: '600', color: '#475569' }}>Phone Number (10 Digits) *</label>
+                  <input
+                    required
+                    type="tel"
+                    inputMode="numeric"
+                    maxLength={10}
+                    pattern="[0-9]{10}"
+                    title="Please enter a valid 10-digit phone number"
+                    name="mobileNumber"
+                    value={formData.mobileNumber}
+                    onChange={handleInputChange}
+                    placeholder="e.g. 9876543210"
+                    style={inputStyle}
+                  />
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   <label style={{ fontSize: '12px', fontWeight: '600', color: '#475569' }}>Email Address *</label>
@@ -290,8 +320,19 @@ const ShopOwners = () => {
                   <input required name="landmark" value={formData.landmark} onChange={handleInputChange} placeholder="e.g. Near Metro Station" style={inputStyle} />
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', gridColumn: 'span 2' }}>
-                  <label style={{ fontSize: '12px', fontWeight: '600', color: '#475569' }}>Pincode *</label>
-                  <input required name="pincode" value={formData.pincode} onChange={handleInputChange} placeholder="e.g. 682001" style={inputStyle} />
+                  <label style={{ fontSize: '12px', fontWeight: '600', color: '#475569' }}>Pincode (6 Digits) *</label>
+                  <input
+                    required
+                    type="tel"
+                    inputMode="numeric"
+                    maxLength={6}
+                    pattern="[0-9]{6}"
+                    name="pincode"
+                    value={formData.pincode}
+                    onChange={handleInputChange}
+                    placeholder="e.g. 682001"
+                    style={inputStyle}
+                  />
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>

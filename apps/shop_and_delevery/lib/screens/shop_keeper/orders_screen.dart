@@ -65,25 +65,26 @@ class _OrdersScreenState extends State<OrdersScreen> {
       stream: FirebaseFirestore.instance
           .collection('orders')
           .where('shopId', isEqualTo: currentUser!.uid)
-          .orderBy('createdAt', descending: true)
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-          // Fallback if index is missing
-          return StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection('orders')
-                .where('shopId', isEqualTo: currentUser!.uid)
-                .snapshots(),
-            builder: (context, snapshotBackup) {
-              if (snapshotBackup.hasError) return Center(child: Text('Error loading orders: ${snapshotBackup.error}'));
-              if (!snapshotBackup.hasData) return const Center(child: CircularProgressIndicator());
-              return _buildFilteredList(snapshotBackup.data!.docs);
-            }
-          );
+          return Center(child: Text('Error loading orders: ${snapshot.error}'));
         }
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-        return _buildFilteredList(snapshot.data!.docs);
+        
+        final docs = List<DocumentSnapshot>.from(snapshot.data!.docs);
+        docs.sort((a, b) {
+          final aData = a.data() as Map<String, dynamic>?;
+          final bData = b.data() as Map<String, dynamic>?;
+          final aTime = aData?['createdAt'] as Timestamp?;
+          final bTime = bData?['createdAt'] as Timestamp?;
+          if (aTime == null && bTime == null) return 0;
+          if (aTime == null) return 1;
+          if (bTime == null) return -1;
+          return bTime.compareTo(aTime);
+        });
+
+        return _buildFilteredList(docs);
       },
     );
   }

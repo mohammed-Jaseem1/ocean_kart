@@ -23,6 +23,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   double totalRevenue = 0.0;
   bool isLoading = true;
 
+  String _shopName = 'My Store';
+
   @override
   void initState() {
     super.initState();
@@ -68,12 +70,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
         }
       }
 
+      // Also fetch shop details
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUser!.uid)
+          .get();
+      
+      String shopName = 'My Store';
+
+      if (userDoc.exists) {
+        final uData = userDoc.data() as Map<String, dynamic>;
+        shopName = uData['shopName'] ?? uData['name'] ?? 'My Store';
+      }
+
       if (mounted) {
         setState(() {
           todayOrders = today;
           pendingOrders = pending;
           completedOrders = completed;
           totalRevenue = revenue;
+          _shopName = shopName;
           isLoading = false;
         });
       }
@@ -107,190 +123,323 @@ class _DashboardScreenState extends State<DashboardScreen> {
         elevation: 0,
         title: const Text(
           'Dashboard',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
         ),
         actions: [
+          // Notification Icon with badge
           IconButton(
-            icon: const Icon(Icons.person, color: Colors.white),
+            icon: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                const Icon(Icons.notifications_outlined, color: Colors.white, size: 22),
+                Positioned(
+                  right: -2,
+                  top: -2,
+                  child: Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF00B4D8),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('No new notifications'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            },
+            tooltip: 'Notifications',
+          ),
+          IconButton(
+            icon: const Icon(Icons.person_outline_rounded, color: Colors.white, size: 22),
             onPressed: () {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const ProfileScreen()),
               );
             },
-            tooltip: 'Profile',
+            tooltip: 'Store Profile',
           ),
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.white),
-            onPressed: () async {
-              await FirebaseAuth.instance.signOut();
-            },
-            tooltip: 'Log Out',
-          )
+          const SizedBox(width: 4),
         ],
       ),
       body: pages[_selectedIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _selectedIndex,
-        onTap: (index) {
-          setState(() {
-            _selectedIndex = index;
-          });
-        },
-        selectedItemColor: lightBlue,
-        unselectedItemColor: Colors.grey.shade600,
-        backgroundColor: Colors.white,
-        elevation: 10,
-        type: BottomNavigationBarType.fixed,
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.dashboard_outlined),
-            activeIcon: Icon(Icons.dashboard),
-            label: 'Dashboard',
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.06),
+              blurRadius: 16,
+              offset: const Offset(0, -4),
+            ),
+          ],
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.only(top: 6, bottom: 6),
+            child: BottomNavigationBar(
+              currentIndex: _selectedIndex,
+              onTap: (index) {
+                setState(() {
+                  _selectedIndex = index;
+                });
+              },
+              selectedItemColor: lightBlue,
+              unselectedItemColor: const Color(0xFF94A3B8),
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              iconSize: 20,
+              selectedFontSize: 11.5,
+              unselectedFontSize: 11,
+              selectedLabelStyle: const TextStyle(fontWeight: FontWeight.w700),
+              unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500),
+              type: BottomNavigationBarType.fixed,
+              items: const [
+                BottomNavigationBarItem(
+                  icon: Padding(
+                    padding: EdgeInsets.only(bottom: 3.0),
+                    child: Icon(Icons.dashboard_outlined),
+                  ),
+                  activeIcon: Padding(
+                    padding: EdgeInsets.only(bottom: 3.0),
+                    child: Icon(Icons.dashboard_rounded),
+                  ),
+                  label: 'Dashboard',
+                ),
+                BottomNavigationBarItem(
+                  icon: Padding(
+                    padding: EdgeInsets.only(bottom: 3.0),
+                    child: Icon(Icons.inventory_2_outlined),
+                  ),
+                  activeIcon: Padding(
+                    padding: EdgeInsets.only(bottom: 3.0),
+                    child: Icon(Icons.inventory_2_rounded),
+                  ),
+                  label: 'Inventory',
+                ),
+                BottomNavigationBarItem(
+                  icon: Padding(
+                    padding: EdgeInsets.only(bottom: 3.0),
+                    child: Icon(Icons.receipt_long_outlined),
+                  ),
+                  activeIcon: Padding(
+                    padding: EdgeInsets.only(bottom: 3.0),
+                    child: Icon(Icons.receipt_long_rounded),
+                  ),
+                  label: 'New Orders',
+                ),
+                BottomNavigationBarItem(
+                  icon: Padding(
+                    padding: EdgeInsets.only(bottom: 3.0),
+                    child: Icon(Icons.history_outlined),
+                  ),
+                  activeIcon: Padding(
+                    padding: EdgeInsets.only(bottom: 3.0),
+                    child: Icon(Icons.history_rounded),
+                  ),
+                  label: 'History',
+                ),
+              ],
+            ),
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.inventory_2_outlined),
-            activeIcon: Icon(Icons.inventory_2),
-            label: 'Inventory',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.receipt_long_outlined),
-            activeIcon: Icon(Icons.receipt_long),
-            label: 'New Orders',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.history_outlined),
-            activeIcon: Icon(Icons.history),
-            label: 'History',
-          ),
-        ],
+        ),
       ),
     );
   }
 
   Widget _buildDashboardContent(BuildContext context, Color navyBlue, Color lightBlue) {
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-            // Welcome Header
+    return RefreshIndicator(
+      color: lightBlue,
+      onRefresh: _fetchDashboardData,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Modern Clean Header
             Container(
-              padding: const EdgeInsets.all(28.0),
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [Color(0xFF0A1628), Color(0xFF003049)],
+                  colors: [Color(0xFF0F172A), Color(0xFF0A2540)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
                 borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(40),
-                  bottomRight: Radius.circular(40),
+                  bottomLeft: Radius.circular(28),
+                  bottomRight: Radius.circular(28),
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black26,
+                    color: Color(0x200F172A),
                     offset: Offset(0, 8),
-                    blurRadius: 15,
+                    blurRadius: 16,
                   )
-                ]
+                ],
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Text(
-                    'Welcome back,',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w400,
-                      color: Colors.white.withValues(alpha: 0.8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Welcome back,',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.white.withValues(alpha: 0.75),
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _shopName,
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                            letterSpacing: -0.3,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 6),
-                  const Text(
-                    'Ocean Fresh Fish Shop',
-                    style: TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                      letterSpacing: 0.5,
+                  const SizedBox(width: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.4)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 7,
+                          height: 7,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF10B981),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 5),
+                        const Text(
+                          'Store Open',
+                          style: TextStyle(
+                            color: Color(0xFF10B981),
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 16),
                 ],
               ),
             ),
 
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
 
             // Statistics Section
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              padding: const EdgeInsets.symmetric(horizontal: 20.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Overview',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: navyBlue,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  
-                  // Stats Grid
-                  GridView.count(
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 16,
-                    mainAxisSpacing: 16,
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    childAspectRatio: 1.15,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      _buildStatCard(
-                        title: 'Orders Today',
-                        value: isLoading ? '...' : todayOrders.toString(),
-                        icon: Icons.shopping_bag_rounded,
-                        color: lightBlue,
+                      const Text(
+                        'Overview',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF0F172A),
+                          letterSpacing: -0.2,
+                        ),
                       ),
-                      _buildStatCard(
-                        title: 'Pending',
-                        value: isLoading ? '...' : pendingOrders.toString(),
-                        icon: Icons.pending_actions_rounded,
-                        color: const Color(0xFFFF9F43),
+                      Text(
+                        'Today',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade500,
+                        ),
                       ),
-                      _buildStatCard(
-                        title: 'Completed',
-                        value: isLoading ? '...' : completedOrders.toString(),
-                        icon: Icons.check_circle_rounded,
-                        color: const Color(0xFF2ED573),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  
+                  // 4 Compact Stats in One Line
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildCompactStatCard(
+                          title: 'Orders',
+                          value: isLoading ? '...' : todayOrders.toString(),
+                          icon: Icons.shopping_bag_rounded,
+                          color: lightBlue,
+                        ),
                       ),
-                      _buildStatCard(
-                        title: 'Revenue',
-                        value: isLoading ? '...' : '₹${totalRevenue.toStringAsFixed(0)}',
-                        icon: Icons.account_balance_wallet_rounded,
-                        color: const Color(0xFF00B4D8),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildCompactStatCard(
+                          title: 'Pending',
+                          value: isLoading ? '...' : pendingOrders.toString(),
+                          icon: Icons.pending_actions_rounded,
+                          color: const Color(0xFFFF9F43),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildCompactStatCard(
+                          title: 'Completed',
+                          value: isLoading ? '...' : completedOrders.toString(),
+                          icon: Icons.check_circle_rounded,
+                          color: const Color(0xFF10B981),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildCompactStatCard(
+                          title: 'Revenue',
+                          value: isLoading ? '...' : '₹${totalRevenue.toStringAsFixed(0)}',
+                          icon: Icons.account_balance_wallet_rounded,
+                          color: const Color(0xFF00B4D8),
+                        ),
                       ),
                     ],
                   ),
 
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 24),
 
                   // Quick Actions Section
-                  Text(
+                  const Text(
                     'Quick Actions',
                     style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: navyBlue,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF0F172A),
+                      letterSpacing: -0.2,
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 14),
 
                   _buildQuickActionButton(
-                    icon: Icons.add_circle_outline,
-                    title: 'Add Fish',
-                    subtitle: 'Add new items to your catalog',
+                    icon: Icons.add_circle_outline_rounded,
+                    title: 'Add Fish / Product',
+                    subtitle: 'Add fresh items & pricing to catalog',
                     color: lightBlue,
                     onTap: () {
                       Navigator.push(
@@ -299,6 +448,49 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       );
                     },
                   ),
+
+                  const SizedBox(height: 28),
+
+                  // Recent Orders Section Header
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Recent Orders',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF0F172A),
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                      InkWell(
+                        onTap: () {
+                          setState(() {
+                            _selectedIndex = 2; // Switch to New Orders tab
+                          });
+                        },
+                        child: const Row(
+                          children: [
+                            Text(
+                              'View All',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF00B4D8),
+                              ),
+                            ),
+                            SizedBox(width: 2),
+                            Icon(Icons.arrow_forward_ios_rounded, size: 12, color: Color(0xFF00B4D8)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Recent Orders Stream
+                  _buildRecentOrdersStream(lightBlue),
                   
                   const SizedBox(height: 32),
                 ],
@@ -306,76 +498,274 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ],
         ),
-      );
+      ),
+    );
   }
 
-  Widget _buildStatCard({
+  Widget _buildRecentOrdersStream(Color lightBlue) {
+    if (currentUser == null) return const SizedBox.shrink();
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('orders')
+          .where('shopId', isEqualTo: currentUser!.uid)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(20.0),
+              child: CircularProgressIndicator(strokeWidth: 2.5),
+            ),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.red.shade50,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Text(
+              'Error loading orders: ${snapshot.error}',
+              style: TextStyle(color: Colors.red.shade700, fontSize: 12),
+            ),
+          );
+        }
+
+        final docs = List<DocumentSnapshot>.from(snapshot.data?.docs ?? []);
+        if (docs.isEmpty) {
+          return Container(
+            padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: Center(
+              child: Column(
+                children: [
+                  Icon(Icons.receipt_long_outlined, size: 40, color: Colors.grey.shade400),
+                  const SizedBox(height: 10),
+                  Text(
+                    'No orders placed yet',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'New customer orders will appear here in real time.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade400,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        // Sort by createdAt descending
+        docs.sort((a, b) {
+          final aData = a.data() as Map<String, dynamic>?;
+          final bData = b.data() as Map<String, dynamic>?;
+          final aTime = aData?['createdAt'] as Timestamp?;
+          final bTime = bData?['createdAt'] as Timestamp?;
+          if (aTime == null && bTime == null) return 0;
+          if (aTime == null) return 1;
+          if (bTime == null) return -1;
+          return bTime.compareTo(aTime);
+        });
+
+        final recentDocs = docs.take(4).toList();
+
+        return Column(
+          children: recentDocs.map((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            final String orderId = doc.id;
+            final String status = (data['status'] ?? 'pending').toString().toLowerCase();
+            final double total = (data['totalAmount'] ?? data['amount'] ?? 0.0).toDouble();
+            final items = data['items'] as List<dynamic>? ?? [];
+
+            Color statusColor = const Color(0xFFFF9F43);
+            if (status == 'completed' || status == 'delivered') {
+              statusColor = const Color(0xFF10B981);
+            } else if (status == 'ready_for_delivery' || status == 'out_for_delivery') {
+              statusColor = const Color(0xFF00B4D8);
+            } else if (status == 'cancelled') {
+              statusColor = Colors.redAccent;
+            }
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.03),
+                    blurRadius: 10,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(Icons.receipt_outlined, size: 16, color: Color(0xFF0F172A)),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Order #${orderId.length > 8 ? orderId.substring(0, 8).toUpperCase() : orderId.toUpperCase()}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 14,
+                              color: Color(0xFF0F172A),
+                            ),
+                          ),
+                        ],
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: statusColor.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          status.replaceAll('_', ' ').toUpperCase(),
+                          style: TextStyle(
+                            color: statusColor,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  // Items snippet
+                  Text(
+                    items.isNotEmpty
+                        ? items.map((e) => '${e['quantity'] ?? 1}x ${e['name'] ?? 'Item'}').join(', ')
+                        : 'No item details',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.grey.shade700,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Total: ₹${total.toStringAsFixed(0)}',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFF0F172A),
+                        ),
+                      ),
+                      InkWell(
+                        onTap: () {
+                          setState(() {
+                            _selectedIndex = 2; // Go to orders tab
+                          });
+                        },
+                        child: const Text(
+                          'Manage Order →',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF00B4D8),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+        );
+      },
+    );
+  }
+
+  Widget _buildCompactStatCard({
     required String title,
     required String value,
     required IconData icon,
     required Color color,
   }) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOut,
-      padding: const EdgeInsets.all(18),
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: color.withValues(alpha: 0.12),
-            blurRadius: 15,
-            spreadRadius: 2,
-            offset: const Offset(0, 6),
+            color: color.withValues(alpha: 0.08),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
           ),
         ],
-        border: Border.all(color: color.withValues(alpha: 0.05)),
+        border: Border.all(color: color.withValues(alpha: 0.12)),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [color.withValues(alpha: 0.2), color.withValues(alpha: 0.05)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(icon, color: color, size: 26),
-              ),
-              Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Colors.grey.shade400)
-            ],
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: color, size: 16),
           ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 26,
-                  fontWeight: FontWeight.w900,
-                  color: Color(0xFF0A1628), // Navy blue
-                  letterSpacing: -0.5,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey.shade500,
-                ),
-              ),
-            ],
+          const SizedBox(height: 6),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+              color: Color(0xFF0F172A),
+              letterSpacing: -0.3,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey.shade600,
+            ),
           ),
         ],
       ),

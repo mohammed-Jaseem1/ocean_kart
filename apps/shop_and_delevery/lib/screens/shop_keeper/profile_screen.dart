@@ -11,6 +11,11 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+  static const Color _primaryCyan = Color(0xFF00B4D8);
+  static const Color _darkNavy = Color(0xFF0F172A);
+  static const Color _textMuted = Color(0xFF64748B);
+  static const Color _cardBorder = Color(0xFFE2E8F0);
+
   bool _isLoading = true;
   Map<String, dynamic> _userData = {};
 
@@ -48,118 +53,304 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const navyBlue = Color(0xFF0A1628);
-    const lightBlue = Color(0xFF00B4D8);
-    const backgroundWhite = Color(0xFFF5F7FA);
+    final bool isLocationPinned = (_userData['locationPinned'] == true || _userData['isLocationPinned'] == true) &&
+        _userData['latitude'] != null;
+    final String pinnedAddress = _userData['pinnedAddress'] ?? _userData['shopAddress'] ?? _userData['address'] ?? 'Not configured yet';
 
     return Scaffold(
-      backgroundColor: backgroundWhite,
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        backgroundColor: navyBlue,
+        backgroundColor: Colors.white,
         elevation: 0,
-        title: const Text('Shop Profile', style: TextStyle(color: Colors.white)),
-        iconTheme: const IconThemeData(color: Colors.white),
+        scrolledUnderElevation: 0,
+        title: const Text(
+          'Store Profile',
+          style: TextStyle(
+            color: _darkNavy,
+            fontWeight: FontWeight.w800,
+            fontSize: 18,
+          ),
+        ),
+        iconTheme: const IconThemeData(color: _darkNavy),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(lightBlue)))
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  const CircleAvatar(
-                    radius: 50,
-                    backgroundColor: navyBlue,
-                    child: Icon(Icons.store, size: 50, color: Colors.white),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    _userData['shopName'] ?? 'Shop Name',
-                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: navyBlue),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    _userData['role'] ?? 'Shopkeeper',
-                    style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
-                  ),
-                  _buildProfileItem(Icons.person, 'Owner Name', _userData['name'] ?? 'N/A'),
-                  _buildProfileItem(Icons.phone, 'Mobile Number', _userData['mobileNumber'] ?? 'N/A'),
-                  _buildProfileItem(Icons.email, 'Email Address', _userData['email'] ?? 'N/A'),
-                  _buildProfileItem(Icons.location_on, 'Shop Address', _userData['shopAddress'] ?? _userData['address'] ?? 'N/A'),
-                  _buildProfileItem(
-                    Icons.pin_drop,
-                    'Pinned GPS Coordinates',
-                    _userData['latitude'] != null
-                        ? '${_userData['latitude'].toStringAsFixed(4)}, ${_userData['longitude'].toStringAsFixed(4)}'
-                        : 'Not Pinned',
-                  ),
-                  const SizedBox(height: 8),
-                  ElevatedButton.icon(
-                    onPressed: () async {
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const LocationSetupScreen(
-                            role: 'Shopkeeper',
-                            isInitialSetup: false,
+          ? const Center(
+              child: CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(_primaryCyan),
+              ),
+            )
+          : RefreshIndicator(
+              color: _primaryCyan,
+              onRefresh: _loadProfile,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Top Profile Card
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: _cardBorder),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.04),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
                           ),
-                        ),
-                      );
-                      _loadProfile();
-                    },
-                    icon: const Icon(Icons.map, size: 18),
-                    label: const Text('Update Store Location on Map'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: navyBlue,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 60,
+                            height: 60,
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF0F172A), Color(0xFF0077B6)],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: const Icon(Icons.storefront_rounded, size: 30, color: Colors.white),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _userData['shopName'] ?? _userData['name'] ?? 'Shop Name',
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w800,
+                                    color: _darkNavy,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: const Text(
+                                        'Verified Shopkeeper',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF10B981),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+
+                    const SizedBox(height: 20),
+
+                    // Store Location Pin Section Card
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: isLocationPinned ? const Color(0xFF10B981).withValues(alpha: 0.3) : Colors.amber.withValues(alpha: 0.4)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: (isLocationPinned ? const Color(0xFF10B981) : Colors.amber).withValues(alpha: 0.06),
+                            blurRadius: 14,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: (isLocationPinned ? const Color(0xFF10B981) : Colors.amber).withValues(alpha: 0.15),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Icon(
+                                      isLocationPinned ? Icons.location_on_rounded : Icons.wrong_location_rounded,
+                                      color: isLocationPinned ? const Color(0xFF10B981) : Colors.amber.shade700,
+                                      size: 20,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Text(
+                                    isLocationPinned ? 'Store GPS Pinned' : 'Location Not Pinned',
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w800,
+                                      color: isLocationPinned ? const Color(0xFF10B981) : Colors.amber.shade800,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (isLocationPinned && _userData['latitude'] != null)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF1F5F9),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    '${_userData['latitude'].toStringAsFixed(4)}, ${_userData['longitude'].toStringAsFixed(4)}',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: _textMuted,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            pinnedAddress,
+                            style: const TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w500,
+                              color: _darkNavy,
+                              height: 1.4,
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: () async {
+                                await Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => const LocationSetupScreen(
+                                      role: 'Shopkeeper',
+                                      isInitialSetup: false,
+                                    ),
+                                  ),
+                                );
+                                _loadProfile();
+                              },
+                              icon: const Icon(Icons.edit_location_alt_rounded, size: 18),
+                              label: Text(
+                                isLocationPinned ? 'Update Store Pin on Map' : 'Pin Store Location Now',
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: _primaryCyan,
+                                foregroundColor: Colors.white,
+                                elevation: 0,
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // Information List
+                    const Padding(
+                      padding: EdgeInsets.only(left: 4.0, bottom: 8.0),
+                      child: Text(
+                        'Store Information',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: _darkNavy,
+                        ),
+                      ),
+                    ),
+
+                    _buildInfoTile(Icons.person_outline_rounded, 'Owner Name', _userData['name'] ?? 'Not provided'),
+                    _buildInfoTile(Icons.phone_outlined, 'Mobile Number', _userData['mobileNumber'] ?? _userData['phone'] ?? 'Not provided'),
+                    _buildInfoTile(Icons.email_outlined, 'Email Address', _userData['email'] ?? 'Not provided'),
+                    _buildInfoTile(Icons.store_mall_directory_outlined, 'Registered Address', _userData['shopAddress'] ?? _userData['address'] ?? 'Not provided'),
+
+                    const SizedBox(height: 20),
+
+                    // Logout Button
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        final navigator = Navigator.of(context);
+                        await FirebaseAuth.instance.signOut();
+                        if (mounted) {
+                          navigator.pop();
+                        }
+                      },
+                      icon: const Icon(Icons.logout_rounded, size: 18, color: Colors.redAccent),
+                      label: const Text(
+                        'Log Out',
+                        style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 14),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        side: const BorderSide(color: Color(0xFFFECACA)),
+                        backgroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                    ),
+                    const SizedBox(height: 30),
+                  ],
+                ),
               ),
             ),
     );
   }
 
-  Widget _buildProfileItem(IconData icon, String title, String value) {
+  Widget _buildInfoTile(IconData icon, String title, String value) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        border: Border.all(color: _cardBorder),
       ),
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: const Color(0xFF00B4D8).withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
+              color: const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(icon, color: const Color(0xFF00B4D8)),
+            child: Icon(icon, color: _primaryCyan, size: 20),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   title,
-                  style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: _textMuted),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
                 Text(
                   value,
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF0A1628)),
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: _darkNavy),
                 ),
               ],
             ),
@@ -169,3 +360,4 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 }
+
