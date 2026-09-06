@@ -224,7 +224,10 @@ class _LocationPickerBottomSheetState extends State<LocationPickerBottomSheet> {
                           TileLayer(
                             urlTemplate:
                                 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                            fallbackUrl:
+                                'https://a.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
                             userAgentPackageName: 'com.example.ocean_kart',
+                            maxZoom: 19,
                           ),
                         ],
                       ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../common/location_setup_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -81,12 +82,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     _userData['role'] ?? 'Shopkeeper',
                     style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
                   ),
-                  const SizedBox(height: 32),
                   _buildProfileItem(Icons.person, 'Owner Name', _userData['name'] ?? 'N/A'),
                   _buildProfileItem(Icons.phone, 'Mobile Number', _userData['mobileNumber'] ?? 'N/A'),
                   _buildProfileItem(Icons.email, 'Email Address', _userData['email'] ?? 'N/A'),
-                  _buildProfileItem(Icons.location_on, 'Shop Address', _userData['shopAddress'] ?? 'N/A'),
-                  _buildProfileItem(Icons.location_city, 'City', _userData['city'] ?? 'N/A'),
+                  _buildProfileItem(Icons.location_on, 'Shop Address', _userData['shopAddress'] ?? _userData['address'] ?? 'N/A'),
+                  _buildProfileItem(
+                    Icons.pin_drop,
+                    'Pinned GPS Coordinates',
+                    _userData['latitude'] != null
+                        ? '${_userData['latitude'].toStringAsFixed(4)}, ${_userData['longitude'].toStringAsFixed(4)}'
+                        : 'Not Pinned',
+                  ),
+                  const SizedBox(height: 8),
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const LocationSetupScreen(
+                            role: 'Shopkeeper',
+                            isInitialSetup: false,
+                          ),
+                        ),
+                      );
+                      _loadProfile();
+                    },
+                    icon: const Icon(Icons.map, size: 18),
+                    label: const Text('Update Store Location on Map'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: navyBlue,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
                 ],
               ),
             ),

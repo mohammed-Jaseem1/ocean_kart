@@ -273,3 +273,53 @@ exports.linkPhoneNumber = onCall(async (request) => {
     throw new HttpsError("internal", errMsg);
   }
 });
+
+/**
+ * Create a new user (Shop Owner or Admin) from the admin panel.
+ * Only authenticated users with admin role can call this.
+ * Allows setting the phone number directly.
+ */
+exports.createAdminUser = onCall(async (request) => {
+  const callerUid = request.auth?.uid;
+  if (!callerUid) {
+    throw new HttpsError("unauthenticated", "Must be logged in.");
+  }
+
+  // Check if caller is admin
+  const callerDoc = await admin.firestore().collection('users').doc(callerUid).get();
+  const adminDoc = await admin.firestore().collection('admin').doc(callerUid).get();
+  
+  if (!(adminDoc.exists || (callerDoc.exists && callerDoc.data().role === 'admin'))) {
+    throw new HttpsError("permission-denied", "Only admins can create users.");
+  }
+
+  const { email, password, name, mobileNumber, role } = request.data || {};
+  if (!email || !password) {
+    throw new HttpsError("invalid-argument", "Email and password are required.");
+  }
+
+  // Format mobile number to E.164
+  let e164Phone = undefined;
+  if (mobileNumber) {
+    let clean = String(mobileNumber).replace(/[+\s-]/g, "");
+    if (clean.length === 10) {
+      clean = `91${clean}`;
+    }
+    e164Phone = `+${clean}`;
+  }
+
+  try {
+    const userRecord = await admin.auth().createUser({
+      email,
+      password,
+      displayName: name,
+      ...(e164Phone && { phoneNumber: e164Phone }),
+      emailVerified: true
+    });
+
+    return { success: true, uid: userRecord.uid };
+  } catch (error) {
+    console.error("createAdminUser Error:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});

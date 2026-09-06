@@ -10,7 +10,11 @@ import 'screens/delevery_partner/delivery_partner_dashboard.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await dotenv.load(fileName: ".env");
+  try {
+    await dotenv.load(fileName: ".env");
+  } catch (e) {
+    debugPrint("DotEnv load notice: $e");
+  }
 
   if (kIsWeb) {
     await Firebase.initializeApp(
@@ -36,18 +40,29 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const primaryBlue = Color(0xFF00B4D8);
-    const darkBackground = Color(0xFF0A1628);
 
     return MaterialApp(
       title: 'OceanKart Delivery',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: darkBackground,
+        brightness: Brightness.light,
+        scaffoldBackgroundColor: Colors.white,
         primaryColor: primaryBlue,
-        colorScheme: const ColorScheme.dark(
+        colorScheme: const ColorScheme.light(
           primary: primaryBlue,
-          surface: darkBackground,
+          surface: Colors.white,
+          onPrimary: Colors.white,
+          onSurface: Color(0xFF0F172A),
+        ),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          iconTheme: IconThemeData(color: Color(0xFF0F172A)),
+          titleTextStyle: TextStyle(
+            color: Color(0xFF0F172A),
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
         ),
         useMaterial3: true,
       ),
@@ -56,17 +71,23 @@ class MyApp extends StatelessWidget {
   }
 }
 
-class AuthGate extends StatelessWidget {
+class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
 
   @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
+  @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.userChanges(),
+      stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
-        // If the connection is waiting, show loading spinner
-        if (snapshot.connectionState == ConnectionState.waiting) {
+        // Only show loading on initial cold launch if waiting and no cached data
+        if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
           return const Scaffold(
+            backgroundColor: Colors.white,
             body: Center(
               child: CircularProgressIndicator(
                 valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00B4D8)),
@@ -75,22 +96,21 @@ class AuthGate extends StatelessWidget {
           );
         }
 
-        // If the user has active session, show the correct Dashboard based on role
-        if (snapshot.hasData) {
-          return FutureBuilder<DocumentSnapshot>(
-            future: FirebaseFirestore.instance
+        // If the user has active session, listen to user document in Firestore
+        if (snapshot.hasData && snapshot.data != null) {
+          final user = snapshot.data!;
+          return StreamBuilder<DocumentSnapshot>(
+            stream: FirebaseFirestore.instance
                 .collection('users')
-                .doc(snapshot.data!.uid)
-                .get(const GetOptions(source: Source.server)),
+                .doc(user.uid)
+                .snapshots(),
             builder: (context, userSnapshot) {
-              if (userSnapshot.connectionState == ConnectionState.waiting) {
+              if (userSnapshot.connectionState == ConnectionState.waiting && !userSnapshot.hasData) {
                 return const Scaffold(
-                  backgroundColor: Color(0xFF0A1628),
+                  backgroundColor: Colors.white,
                   body: Center(
                     child: CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        Color(0xFF00B4D8),
-                      ),
+                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00B4D8)),
                     ),
                   ),
                 );
@@ -107,28 +127,16 @@ class AuthGate extends StatelessWidget {
                   );
                 });
                 return const Scaffold(
-                  backgroundColor: Color(0xFF0A1628),
-                  body: Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00B4D8)))),
+                  backgroundColor: Colors.white,
+                  body: Center(
+                    child: CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00B4D8)),
+                    ),
+                  ),
                 );
               }
 
-              if (userSnapshot.hasData) {
-                if (!userSnapshot.data!.exists) {
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    FirebaseAuth.instance.signOut();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Your request was rejected.'),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
-                  });
-                  return const Scaffold(
-                    backgroundColor: Color(0xFF0A1628),
-                    body: Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00B4D8)))),
-                  );
-                }
-
+              if (userSnapshot.hasData && userSnapshot.data != null && userSnapshot.data!.exists) {
                 final userData = userSnapshot.data!.data() as Map<String, dynamic>?;
 
                 if (userData?['status'] == 'pending') {
@@ -142,19 +150,44 @@ class AuthGate extends StatelessWidget {
                     );
                   });
                   return const Scaffold(
-                    backgroundColor: Color(0xFF0A1628),
-                    body: Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00B4D8)))),
+                    backgroundColor: Colors.white,
+                    body: Center(
+                      child: CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00B4D8)),
+                      ),
+                    ),
+                  );
+                }
+
+                if (userData?['status'] == 'suspended') {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    FirebaseAuth.instance.signOut();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Your account has been suspended. Please contact admin.'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  });
+                  return const Scaffold(
+                    backgroundColor: Colors.white,
+                    body: Center(
+                      child: CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00B4D8)),
+                      ),
+                    ),
                   );
                 }
 
                 final role = userData?['role'];
 
-                if (role == 'Delivery Boy') {
+                // Route directly to role-specific dashboard
+                if (role == 'Delivery Boy' || role == 'delivery_partner') {
                   return const DeliveryPartnerDashboard();
                 } else if (role == 'Shopkeeper') {
                   return const DashboardScreen();
                 } else {
-                  // If it's a 'customer' or unknown role, deny access
+                  // If it's a customer or unknown role, deny access
                   WidgetsBinding.instance.addPostFrameCallback((_) {
                     FirebaseAuth.instance.signOut();
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -167,26 +200,22 @@ class AuthGate extends StatelessWidget {
                     );
                   });
                   return const Scaffold(
-                    backgroundColor: Color(0xFF0A1628),
+                    backgroundColor: Colors.white,
                     body: Center(
                       child: CircularProgressIndicator(
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          Color(0xFF00B4D8),
-                        ),
+                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00B4D8)),
                       ),
                     ),
                   );
                 }
               }
 
-              // Fallback to loading while document doesn't exist
+              // Fallback to loading while document is syncing or being read
               return const Scaffold(
-                backgroundColor: Color(0xFF0A1628),
+                backgroundColor: Colors.white,
                 body: Center(
                   child: CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      Color(0xFF00B4D8),
-                    ),
+                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00B4D8)),
                   ),
                 ),
               );

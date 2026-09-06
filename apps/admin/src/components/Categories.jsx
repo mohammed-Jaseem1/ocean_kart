@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { collection, addDoc, getDocs, doc, updateDoc, deleteDoc, serverTimestamp, query, orderBy } from 'firebase/firestore';
+import { collection, addDoc, getDocs, doc, updateDoc, serverTimestamp, query, orderBy } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../firebase';
 import './Homepage.css';
@@ -9,6 +9,7 @@ const Categories = () => {
   const [loading, setLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
   const [isFormVisible, setIsFormVisible] = useState(false);
+  const [editingCategoryId, setEditingCategoryId] = useState(null);
   
   // Form State
   const [name, setName] = useState('');
@@ -89,21 +90,6 @@ const Categories = () => {
     }
   };
 
-  const handleDeleteCategory = async (categoryId) => {
-    if (!window.confirm('Are you sure you want to delete this category?')) return;
-    try {
-      await deleteDoc(doc(db, 'categories', categoryId));
-      setCategories(prev => {
-        const updated = prev.filter(c => c.id !== categoryId);
-        sessionStorage.setItem('admin_categories_cache', JSON.stringify(updated));
-        return updated;
-      });
-    } catch (err) {
-      console.error('Error deleting category:', err);
-      alert('Failed to delete category.');
-    }
-  };
-
   const convertToWebP = (file) => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -138,9 +124,32 @@ const Categories = () => {
     });
   };
 
+  const resetForm = () => {
+    setName('');
+    setStatus('active');
+    setImageFile(null);
+    setImagePreview(null);
+    setUploadProgress(0);
+    setEditingCategoryId(null);
+    setIsAdding(false);
+    setIsFormVisible(false);
+    setError('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const openEditModal = (category) => {
+    setEditingCategoryId(category.id);
+    setName(category.name);
+    setStatus(category.status || 'active');
+    setImagePreview(category.imageUrl);
+    setImageFile(null);
+    setError('');
+    setIsFormVisible(true);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!name.trim() || !imageFile) {
+    if (!name.trim() || (!imageFile && !editingCategoryId)) {
       setError('Please provide a category name and select an image.');
       return;
     }
@@ -148,60 +157,69 @@ const Categories = () => {
     try {
       setIsAdding(true);
       setError('');
-      // Convert to WebP
-      let finalFile = imageFile;
-      try {
-        if (imageFile.type.startsWith('image/') && !imageFile.type.includes('webp')) {
-          finalFile = await convertToWebP(imageFile);
+      
+      let downloadURL = imagePreview; // Default to existing URL if editing and no new image
+
+      if (imageFile) {
+        // Convert to WebP
+        let finalFile = imageFile;
+        try {
+          if (imageFile.type.startsWith('image/') && !imageFile.type.includes('webp')) {
+            finalFile = await convertToWebP(imageFile);
+          }
+        } catch (conversionError) {
+          console.error("WebP conversion failed, using original file:", conversionError);
         }
-      } catch (conversionError) {
-        console.error("WebP conversion failed, using original file:", conversionError);
+
+        // 1. Upload Image
+        const storageRef = ref(storage, `categories/${Date.now()}_${finalFile.name}`);
+        const uploadTask = uploadBytesResumable(storageRef, finalFile);
+
+        downloadURL = await new Promise((resolve, reject) => {
+          uploadTask.on(
+            'state_changed',
+            (snapshot) => {
+              const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+              setUploadProgress(progress);
+            },
+            (error) => {
+              console.error("Upload error:", error);
+              setError("Failed to upload image. Please try again.");
+              setIsAdding(false);
+              reject(error);
+            },
+            async () => {
+              const url = await getDownloadURL(uploadTask.snapshot.ref);
+              resolve(url);
+            }
+          );
+        });
       }
 
-      // 1. Upload Image
-      const storageRef = ref(storage, `categories/${Date.now()}_${finalFile.name}`);
-      const uploadTask = uploadBytesResumable(storageRef, finalFile);
-
-      uploadTask.on(
-        'state_changed',
-        (snapshot) => {
-          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-          setUploadProgress(progress);
-        },
-        (error) => {
-          console.error("Upload error:", error);
-          setError("Failed to upload image. Please try again.");
-          setIsAdding(false);
-        },
-        async () => {
-          // 2. Get Download URL
-          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-          
-          // 3. Save to Firestore
+      if (downloadURL) {
+        if (editingCategoryId) {
+          // Update existing
+          await updateDoc(doc(db, 'categories', editingCategoryId), {
+            name: name.trim(),
+            imageUrl: downloadURL,
+            status: status || 'active',
+          });
+        } else {
+          // Save new
           await addDoc(collection(db, 'categories'), {
             name: name.trim(),
             imageUrl: downloadURL,
             status: status || 'active',
             createdAt: serverTimestamp()
           });
-
-          // Reset Form
-          setName('');
-          setStatus('active');
-          setImageFile(null);
-          setImagePreview(null);
-          setUploadProgress(0);
-          if (fileInputRef.current) fileInputRef.current.value = '';
-          
-          setIsAdding(false);
-          setIsFormVisible(false);
-          fetchCategories(true);
         }
-      );
-
+        
+        resetForm();
+        fetchCategories(true);
+      }
     } catch (err) {
-      console.error('Error adding category:', err);
-      setError('An error occurred while adding the category.');
+      console.error('Error saving category:', err);
+      setError('An error occurred while saving the category.');
       setIsAdding(false);
     }
   };
@@ -219,7 +237,10 @@ const Categories = () => {
           </div>
 
           <button 
-            onClick={() => setIsFormVisible(true)}
+            onClick={() => {
+              resetForm();
+              setIsFormVisible(true);
+            }}
             style={{
               padding: '10px 18px',
               background: '#0284c7',
@@ -277,12 +298,11 @@ const Categories = () => {
                 alignItems: 'center',
                 borderBottom: '1px solid #e2e8f0'
               }}>
-                <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#0f172a', margin: 0 }}>Create New Category</h3>
+                <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#0f172a', margin: 0 }}>
+                  {editingCategoryId ? 'Edit Category' : 'Create New Category'}
+                </h3>
                 <button 
-                  onClick={() => {
-                    setIsFormVisible(false);
-                    setError('');
-                  }}
+                  onClick={resetForm}
                   style={{
                     background: 'none',
                     border: 'none',
@@ -362,7 +382,7 @@ const Categories = () => {
 
                 <div>
                   <label style={{ display: 'block', marginBottom: '6px', color: '#334155', fontSize: '13px', fontWeight: '600' }}>
-                    Category Image *
+                    Category Image {editingCategoryId ? '(Optional to leave unchanged)' : '*'}
                   </label>
                   <input 
                     type="file" 
@@ -406,7 +426,7 @@ const Categories = () => {
                 <div style={{ display: 'flex', gap: '12px', marginTop: '12px', justifyContent: 'flex-end' }}>
                   <button
                     type="button"
-                    onClick={() => setIsFormVisible(false)}
+                    onClick={resetForm}
                     style={{
                       padding: '10px 18px',
                       background: '#ffffff',
@@ -422,20 +442,20 @@ const Categories = () => {
                   </button>
                   <button 
                     type="submit" 
-                    disabled={isAdding || !name || !imageFile}
+                    disabled={isAdding || !name || (!imageFile && !editingCategoryId)}
                     style={{
                       padding: '10px 20px',
-                      background: (!name || !imageFile) ? '#94a3b8' : '#0284c7',
+                      background: (!name || (!imageFile && !editingCategoryId)) ? '#94a3b8' : '#0284c7',
                       color: '#ffffff',
                       border: 'none',
                       borderRadius: '8px',
-                      cursor: (!name || !imageFile || isAdding) ? 'not-allowed' : 'pointer',
+                      cursor: (!name || (!imageFile && !editingCategoryId) || isAdding) ? 'not-allowed' : 'pointer',
                       fontWeight: '600',
                       fontSize: '14px',
                       opacity: isAdding ? 0.7 : 1
                     }}
                   >
-                    {isAdding ? 'Saving...' : 'Add Category'}
+                    {isAdding ? 'Saving...' : (editingCategoryId ? 'Save Changes' : 'Add Category')}
                   </button>
                 </div>
               </form>
@@ -489,6 +509,21 @@ const Categories = () => {
                       <td>
                         <div style={{ display: 'flex', gap: '8px' }}>
                           <button
+                            onClick={() => openEditModal(category)}
+                            style={{
+                              padding: '6px 12px',
+                              borderRadius: '6px',
+                              border: '1px solid #3b82f6',
+                              background: 'transparent',
+                              color: '#3b82f6',
+                              fontSize: '12px',
+                              fontWeight: '600',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            Edit
+                          </button>
+                          <button
                             onClick={() => handleToggleStatus(category.id, category.status || 'active')}
                             style={{
                               padding: '6px 12px',
@@ -502,21 +537,6 @@ const Categories = () => {
                             }}
                           >
                             {isActive ? 'Deactivate' : 'Activate'}
-                          </button>
-                          <button
-                            onClick={() => handleDeleteCategory(category.id)}
-                            style={{
-                              padding: '6px 12px',
-                              borderRadius: '6px',
-                              border: '1px solid #ff4757',
-                              background: 'transparent',
-                              color: '#ff4757',
-                              fontSize: '12px',
-                              fontWeight: '600',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            Delete
                           </button>
                         </div>
                       </td>
