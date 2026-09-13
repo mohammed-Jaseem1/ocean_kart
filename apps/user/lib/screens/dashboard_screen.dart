@@ -6,6 +6,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'cart_screen.dart';
 import 'profile_screen.dart';
 import 'checkout_screen.dart';
+import 'category_products_screen.dart';
+import 'shop_products_screen.dart';
 import '../constants/kerala_places.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -18,8 +20,6 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   int _selectedIndex = 0;
   String _searchQuery = '';
-  String _selectedCategory = '';
-  String _selectedShopId = '';
   String _selectedLocation = 'Kochi';
 
   final Color _navyBlue = const Color(0xFFF8FAFC);
@@ -211,42 +211,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     .toLowerCase();
                 return name.contains(_searchQuery.toLowerCase()) ||
                     malayalam.contains(_searchQuery.toLowerCase());
-              }).toList();
-            }
-
-            if (_selectedCategory.isNotEmpty) {
-              if (_selectedCategory == 'Offers') {
-                docs = docs.where((doc) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  return data['isOffer'] == true;
-                }).toList();
-              } else {
-                final query = _selectedCategory.toLowerCase();
-                final singularQuery = query.endsWith('s')
-                    ? query.substring(0, query.length - 1)
-                    : query;
-
-                docs = docs.where((doc) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  final cat = (data['category'] ?? '').toString().toLowerCase();
-                  final name = (data['name'] ?? '').toString().toLowerCase();
-
-                  if (cat.contains(query) || cat.contains(singularQuery)) {
-                    return true;
-                  }
-                  if (name.contains(query) || name.contains(singularQuery)) {
-                    return true;
-                  }
-
-                  return false;
-                }).toList();
-              }
-            }
-
-            if (_selectedShopId.isNotEmpty) {
-              docs = docs.where((doc) {
-                final data = doc.data() as Map<String, dynamic>;
-                return (data['shopId'] ?? '') == _selectedShopId;
               }).toList();
             }
 
@@ -788,19 +752,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
               final cat = docs[index].data() as Map<String, dynamic>;
               final name = cat['name']?.toString() ?? '';
               final imageUrl = cat['imageUrl']?.toString() ?? '';
-              final isSelected = _selectedCategory == name;
 
               return Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 child: GestureDetector(
                   onTap: () {
-                    setState(() {
-                      if (_selectedCategory == name) {
-                        _selectedCategory = ''; // Deselect
-                      } else {
-                        _selectedCategory = name;
-                      }
-                    });
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => CategoryProductsScreen(
+                          categoryName: name,
+                          categoryImageUrl: imageUrl,
+                        ),
+                      ),
+                    );
                   },
                   child: Column(
                     children: [
@@ -811,10 +776,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           color: _cardColor,
                           shape: BoxShape.circle,
                           border: Border.all(
-                            color: isSelected
-                                ? _lightBlue
-                                : _lightBlue.withValues(alpha: 0.3),
-                            width: isSelected ? 3 : 1,
+                            color: _lightBlue.withValues(alpha: 0.3),
+                            width: 1,
                           ),
                           image: imageUrl.isNotEmpty
                               ? DecorationImage(
@@ -871,20 +834,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
               final shop = shopDoc.data() as Map<String, dynamic>;
               final shopName = shop['name'] ?? shop['shopName'] ?? 'Shop';
               final shopId = shopDoc.id;
-              final isSelected = _selectedShopId == shopId;
               final shopProfileImg = (shop['profileImage'] ?? shop['imageUrl'] ?? shop['shopImage'] ?? '').toString().trim();
 
               return Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 child: GestureDetector(
                   onTap: () {
-                    setState(() {
-                      if (_selectedShopId == shopId) {
-                        _selectedShopId = '';
-                      } else {
-                        _selectedShopId = shopId;
-                      }
-                    });
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ShopProductsScreen(
+                          shopId: shopId,
+                          shopName: shopName,
+                          shopData: shop,
+                        ),
+                      ),
+                    );
                   },
                   child: Column(
                     children: [
@@ -893,17 +858,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         height: 75,
                         clipBehavior: Clip.antiAlias,
                         decoration: BoxDecoration(
-                          color: isSelected ? _lightBlue : Colors.white,
+                          color: Colors.white,
                           shape: BoxShape.circle,
-                          border: isSelected
-                              ? Border.all(
-                                  color: _lightBlue.withValues(alpha: 0.3),
-                                  width: 4,
-                                )
-                              : Border.all(
-                                  color: Colors.grey.shade200,
-                                  width: 1.5,
-                                ),
+                          border: Border.all(
+                            color: Colors.grey.shade200,
+                            width: 1.5,
+                          ),
                           boxShadow: [
                             BoxShadow(
                               color: Colors.black.withValues(alpha: 0.05),
@@ -927,7 +887,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   child: Text(
                                     shopName.isNotEmpty ? shopName.substring(0, 1).toUpperCase() : 'S',
                                     style: TextStyle(
-                                      color: isSelected ? Colors.white : _lightBlue,
+                                      color: _lightBlue,
                                       fontSize: 32,
                                       fontWeight: FontWeight.bold,
                                     ),
@@ -938,7 +898,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 child: Text(
                                   shopName.isNotEmpty ? shopName.substring(0, 1).toUpperCase() : 'S',
                                   style: TextStyle(
-                                    color: isSelected ? Colors.white : _lightBlue,
+                                    color: _lightBlue,
                                     fontSize: 32,
                                     fontWeight: FontWeight.bold,
                                   ),
@@ -949,7 +909,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       Text(
                         shopName,
                         style: TextStyle(
-                          color: isSelected ? _lightBlue : _textColor,
+                          color: _textColor,
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
                         ),
