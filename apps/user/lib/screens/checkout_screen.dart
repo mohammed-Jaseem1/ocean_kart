@@ -650,7 +650,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       final String customerEmail = userData['email'] ?? user.email ?? '';
 
       // 3. Create Order
-      await FirebaseFirestore.instance.collection('orders').add({
+      final orderRef = await FirebaseFirestore.instance.collection('orders').add({
         'userId': user.uid,
         'customerName': customerName,
         'customerEmail': customerEmail,
@@ -666,6 +666,50 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         'status': 'pending',
         'createdAt': FieldValue.serverTimestamp(),
       });
+
+      final String orderId = orderRef.id;
+      final String shopId = _itemsToOrder.isNotEmpty ? (_itemsToOrder.first['shopId'] ?? '') : '';
+      final String shortOrderId = orderId.length > 8 ? orderId.substring(0, 8).toUpperCase() : orderId.toUpperCase();
+
+      // Trigger Notification for Shop Owner
+      if (shopId.isNotEmpty) {
+        try {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(shopId)
+              .collection('notifications')
+              .add({
+            'title': 'New Order Received! 🛒',
+            'body': 'Order #$shortOrderId placed by $customerName for ₹${_calculatedTotal.toStringAsFixed(0)}.',
+            'type': 'order',
+            'orderId': orderId,
+            'isRead': false,
+            'read': false,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+        } catch (e) {
+          debugPrint('Error triggering shop owner notification: $e');
+        }
+      }
+
+      // Trigger Notification for Customer
+      try {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('notifications')
+            .add({
+          'title': 'Order Placed Successfully! 🎉',
+          'body': 'Your order #$shortOrderId for ₹${_calculatedTotal.toStringAsFixed(0)} has been placed.',
+          'type': 'order',
+          'orderId': orderId,
+          'isRead': false,
+          'read': false,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      } catch (e) {
+        debugPrint('Error triggering customer notification: $e');
+      }
 
       // 4. Reduce inventory stock
       for (var item in _itemsToOrder) {

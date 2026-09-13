@@ -3,9 +3,30 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
+import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
-import 'dart:typed_data';
 import 'dart:convert';
+
+String? _processWebpInIsolate(Uint8List rawBytes) {
+  try {
+    final decodedImage = img.decodeImage(rawBytes);
+    if (decodedImage == null) return null;
+
+    img.Image resized = decodedImage;
+    if (decodedImage.width > 600 || decodedImage.height > 600) {
+      if (decodedImage.width >= decodedImage.height) {
+        resized = img.copyResize(decodedImage, width: 600);
+      } else {
+        resized = img.copyResize(decodedImage, height: 600);
+      }
+    }
+
+    final webpBytes = img.encodeWebP(resized);
+    return 'data:image/webp;base64,${base64Encode(webpBytes)}';
+  } catch (e) {
+    return 'data:image/jpeg;base64,${base64Encode(rawBytes)}';
+  }
+}
 
 class AddProductScreen extends StatefulWidget {
   final String? productId;
@@ -31,15 +52,8 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
   bool _isOffer = false;
   
-  String _selectedCategory = 'Sea Water Fish';
-  List<String> _categories = [
-    'Sea Water Fish',
-    'Fresh Water Fish',
-    'Prawns & Shrimps',
-    'Crabs',
-    'Exotic Seafood',
-    'Others'
-  ];
+  String _selectedCategory = '';
+  List<String> _categories = [];
   bool _isLoadingCategories = true;
 
   bool _isLoading = false;
@@ -53,7 +67,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
     if (widget.productData != null) {
       _nameController.text = widget.productData!['name'] ?? '';
       _malayalamNameController.text = widget.productData!['malayalamName'] ?? '';
-      _selectedCategory = widget.productData!['category'] ?? 'Sea Water Fish';
+      _selectedCategory = widget.productData!['category'] ?? '';
       _priceController.text = widget.productData!['pricePerKg']?.toString() ?? '';
 
       if (widget.productData!['images'] != null && widget.productData!['images'] is List) {
@@ -75,36 +89,37 @@ class _AddProductScreenState extends State<AddProductScreen> {
   Future<void> _fetchCategories() async {
     try {
       final snapshot = await FirebaseFirestore.instance.collection('categories').get();
-      if (snapshot.docs.isNotEmpty) {
-        final fetchedCats = snapshot.docs
-            .map((doc) => (doc.data()['name'] ?? doc.data()['categoryName'] ?? '').toString().trim())
-            .where((name) => name.isNotEmpty)
-            .toList();
+      final fetchedCats = snapshot.docs
+          .where((doc) {
+            final data = doc.data();
+            final status = (data['status'] ?? 'active').toString().toLowerCase();
+            return status == 'active';
+          })
+          .map((doc) => (doc.data()['name'] ?? doc.data()['categoryName'] ?? '').toString().trim())
+          .where((name) => name.isNotEmpty)
+          .toList();
 
-        if (fetchedCats.isNotEmpty) {
-          final uniqueSet = <String>{...fetchedCats, ..._categories};
-          if (_selectedCategory.isNotEmpty) {
-            uniqueSet.add(_selectedCategory);
+      final uniqueCats = fetchedCats.toSet().toList();
+
+      if (mounted) {
+        setState(() {
+          _categories = uniqueCats;
+          if (_selectedCategory.isNotEmpty && !_categories.contains(_selectedCategory)) {
+            _categories.insert(0, _selectedCategory);
           }
-          if (mounted) {
-            setState(() {
-              _categories = uniqueSet.toList();
-              if (!_categories.contains(_selectedCategory) && _categories.isNotEmpty) {
-                _selectedCategory = _categories.first;
-              }
-              _isLoadingCategories = false;
-            });
+          if (_categories.isNotEmpty && (_selectedCategory.isEmpty || !_categories.contains(_selectedCategory))) {
+            _selectedCategory = _categories.first;
           }
-          return;
-        }
+          _isLoadingCategories = false;
+        });
       }
     } catch (e) {
       debugPrint('Error fetching categories: $e');
-    }
-    if (mounted) {
-      setState(() {
-        _isLoadingCategories = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoadingCategories = false;
+        });
+      }
     }
   }
 
@@ -116,29 +131,6 @@ class _AddProductScreenState extends State<AddProductScreen> {
     _offerPriceController.dispose();
     super.dispose();
   }
-
-import 'package:flutter/foundation.dart';
-
-String? _processWebpInIsolate(Uint8List rawBytes) {
-  try {
-    final decodedImage = img.decodeImage(rawBytes);
-    if (decodedImage == null) return null;
-
-    img.Image resized = decodedImage;
-    if (decodedImage.width > 600 || decodedImage.height > 600) {
-      if (decodedImage.width >= decodedImage.height) {
-        resized = img.copyResize(decodedImage, width: 600);
-      } else {
-        resized = img.copyResize(decodedImage, height: 600);
-      }
-    }
-
-    final webpBytes = img.encodeWebP(resized);
-    return 'data:image/webp;base64,${base64Encode(webpBytes)}';
-  } catch (e) {
-    return 'data:image/jpeg;base64,${base64Encode(rawBytes)}';
-  }
-}
 
   Future<String?> _compressAndEncodeToWebp(Uint8List rawBytes) async {
     try {
@@ -213,7 +205,7 @@ String? _processWebpInIsolate(Uint8List rawBytes) {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Image optimized (WebP) & added! (${_productImages.length}/4)'),
+            content: Text('Image added! (${_productImages.length}/4)'),
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 2),
           ),
@@ -318,7 +310,7 @@ String? _processWebpInIsolate(Uint8List rawBytes) {
               ),
             ),
             Text(
-              '${_productImages.length}/4 images (WebP)',
+              '${_productImages.length}/4 images',
               style: TextStyle(
                 fontSize: 12,
                 color: Colors.grey.shade600,
@@ -330,8 +322,19 @@ String? _processWebpInIsolate(Uint8List rawBytes) {
         const SizedBox(height: 8),
         SizedBox(
           height: 110,
-          child: ListView.builder(
+          child: ReorderableListView.builder(
             scrollDirection: Axis.horizontal,
+            buildDefaultDragHandles: false,
+            onReorderItem: (int oldIndex, int newIndex) {
+              if (oldIndex >= _productImages.length) return;
+              if (newIndex > _productImages.length) {
+                newIndex = _productImages.length;
+              }
+              setState(() {
+                final item = _productImages.removeAt(oldIndex);
+                _productImages.insert(newIndex, item);
+              });
+            },
             itemCount: _productImages.length + (_productImages.length < 4 ? 1 : 0),
             itemBuilder: (context, index) {
               if (index < _productImages.length) {
@@ -346,92 +349,100 @@ String? _processWebpInIsolate(Uint8List rawBytes) {
                   imgProvider = MemoryImage(base64Decode(imgUrl));
                 }
 
-                return Padding(
-                  padding: const EdgeInsets.only(right: 12.0),
-                  child: Stack(
-                    children: [
-                      Container(
-                        width: 100,
-                        height: 100,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                            color: index == 0 ? primaryBlue : Colors.grey.shade300,
-                            width: index == 0 ? 2 : 1,
-                          ),
-                          image: DecorationImage(
-                            image: imgProvider,
-                            fit: BoxFit.cover,
+                return ReorderableDelayedDragStartListener(
+                  key: ValueKey('img_${imgUrl.hashCode}_$index'),
+                  index: index,
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 12.0),
+                    child: Stack(
+                      children: [
+                        Container(
+                          width: 100,
+                          height: 100,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: index == 0 ? primaryBlue : Colors.grey.shade300,
+                              width: index == 0 ? 2 : 1,
+                            ),
+                            image: DecorationImage(
+                              image: imgProvider,
+                              fit: BoxFit.cover,
+                            ),
                           ),
                         ),
-                      ),
-                      if (index == 0)
-                        Positioned(
-                          bottom: 4,
-                          left: 4,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: primaryBlue,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Text(
-                              'COVER',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold,
+                        if (index == 0)
+                          Positioned(
+                            bottom: 4,
+                            left: 4,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: primaryBlue,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Text(
+                                'COVER',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      Positioned(
-                        top: 4,
-                        right: 4,
-                        child: GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              _productImages.removeAt(index);
-                            });
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: const BoxDecoration(
-                              color: Colors.red,
-                              shape: BoxShape.circle,
+                        Positioned(
+                          top: 4,
+                          right: 4,
+                          child: GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                _productImages.removeAt(index);
+                              });
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: const BoxDecoration(
+                                color: Colors.red,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.close, color: Colors.white, size: 12),
                             ),
-                            child: const Icon(Icons.close, color: Colors.white, size: 12),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              } else {
-                return GestureDetector(
-                  onTap: _isLoading ? null : _pickAndUploadImage,
-                  child: Container(
-                    width: 100,
-                    height: 100,
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade50,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: Colors.grey.shade300),
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.add_a_photo_outlined, size: 28, color: primaryBlue),
-                        const SizedBox(height: 4),
-                        Text(
-                          '+ Add Image',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey.shade700,
-                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ],
+                    ),
+                  ),
+                );
+              } else {
+                return Container(
+                  key: const ValueKey('add_image_tile'),
+                  margin: const EdgeInsets.only(right: 12.0),
+                  child: GestureDetector(
+                    onTap: _isLoading ? null : _pickAndUploadImage,
+                    child: Container(
+                      width: 100,
+                      height: 100,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade50,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: Colors.grey.shade300),
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.add_a_photo_outlined, size: 28, color: primaryBlue),
+                          const SizedBox(height: 4),
+                          Text(
+                            '+ Add Image',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey.shade700,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 );
@@ -538,10 +549,14 @@ String? _processWebpInIsolate(Uint8List rawBytes) {
                       child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
                     )
                   : DropdownButtonFormField<String>(
-                      initialValue: _selectedCategory,
+                      initialValue: _categories.contains(_selectedCategory)
+                          ? _selectedCategory
+                          : (_categories.isNotEmpty ? _categories.first : null),
                       dropdownColor: Colors.white,
                       style: const TextStyle(color: Color(0xFF0F172A), fontSize: 15),
-                      decoration: inputDecoration,
+                      decoration: inputDecoration.copyWith(
+                        hintText: 'Select category',
+                      ),
                       items: _categories.map((String category) {
                         return DropdownMenuItem(
                           value: category,
@@ -555,6 +570,8 @@ String? _processWebpInIsolate(Uint8List rawBytes) {
                           });
                         }
                       },
+                      validator: (value) =>
+                          value == null || value.trim().isEmpty ? 'Please select a category' : null,
                     ),
               const SizedBox(height: 16),
 
@@ -579,57 +596,61 @@ String? _processWebpInIsolate(Uint8List rawBytes) {
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: Colors.grey.shade300),
                 ),
-                child: Column(
-                  children: [
-                    SwitchListTile(
-                      title: const Text(
-                        'Special Offer Discount',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
-                          color: Color(0xFF0F172A),
+                clipBehavior: Clip.antiAlias,
+                child: Material(
+                  color: Colors.transparent,
+                  child: Column(
+                    children: [
+                      SwitchListTile(
+                        title: const Text(
+                          'Special Offer Discount',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                            color: Color(0xFF0F172A),
+                          ),
                         ),
+                        subtitle: Text(
+                          _isOffer ? 'Special discounted price active' : 'Enable offer price',
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                        ),
+                        value: _isOffer,
+                        activeThumbColor: primaryBlue,
+                        onChanged: (bool value) {
+                          setState(() {
+                            _isOffer = value;
+                          });
+                        },
                       ),
-                      subtitle: Text(
-                        _isOffer ? 'Special discounted price active' : 'Enable offer price',
-                        style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                      ),
-                      value: _isOffer,
-                      activeThumbColor: primaryBlue,
-                      onChanged: (bool value) {
-                        setState(() {
-                          _isOffer = value;
-                        });
-                      },
-                    ),
-                    if (_isOffer) ...[
-                      const Divider(height: 1),
-                      Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            buildLabel('Offer Price (₹ per kg) *'),
-                            TextFormField(
-                              controller: _offerPriceController,
-                              style: const TextStyle(color: Color(0xFF0F172A), fontSize: 15),
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              decoration: inputDecoration.copyWith(
-                                hintText: 'e.g. 199',
-                                prefixText: '₹ ',
-                                fillColor: Colors.white,
+                      if (_isOffer) ...[
+                        const Divider(height: 1),
+                        Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              buildLabel('Offer Price (₹ per kg) *'),
+                              TextFormField(
+                                controller: _offerPriceController,
+                                style: const TextStyle(color: Color(0xFF0F172A), fontSize: 15),
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                decoration: inputDecoration.copyWith(
+                                  hintText: 'e.g. 199',
+                                  prefixText: '₹ ',
+                                  fillColor: Colors.white,
+                                ),
+                                validator: (value) {
+                                  if (!_isOffer) return null;
+                                  if (value == null || value.trim().isEmpty) return 'Please enter offer price';
+                                  return null;
+                                 },
                               ),
-                              validator: (value) {
-                                if (!_isOffer) return null;
-                                if (value == null || value.trim().isEmpty) return 'Please enter offer price';
-                                return null;
-                               },
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
               const SizedBox(height: 32),

@@ -17,12 +17,44 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
   void _updateOrderStatus(String orderId, String newStatus) async {
     try {
+      final orderDoc = await FirebaseFirestore.instance.collection('orders').doc(orderId).get();
       await FirebaseFirestore.instance.collection('orders').doc(orderId).update({
         'status': newStatus,
       });
+
+      if (orderDoc.exists) {
+        final data = orderDoc.data();
+        final String? customerId = data?['userId'];
+        if (customerId != null && customerId.isNotEmpty) {
+          final shortId = orderId.length > 8 ? orderId.substring(0, 8).toUpperCase() : orderId.toUpperCase();
+          String title = 'Order Status Updated 📦';
+          if (newStatus == 'ready_for_delivery') {
+            title = 'Order Accepted! 📦';
+          } else if (newStatus == 'cancelled') {
+            title = 'Order Cancelled ❌';
+          } else if (newStatus == 'completed' || newStatus == 'delivered') {
+            title = 'Order Delivered! 🎉';
+          }
+
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(customerId)
+              .collection('notifications')
+              .add({
+            'title': title,
+            'body': 'Your order #$shortId status is now ${newStatus.replaceAll('_', ' ').toUpperCase()}.',
+            'type': 'order',
+            'orderId': orderId,
+            'isRead': false,
+            'read': false,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+        }
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Order marked as $newStatus'), backgroundColor: Colors.green),
+          SnackBar(content: Text('Order marked as ${newStatus.replaceAll('_', ' ')}'), backgroundColor: Colors.green),
         );
       }
     } catch (e) {

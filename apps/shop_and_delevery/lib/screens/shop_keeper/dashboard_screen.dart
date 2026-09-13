@@ -5,6 +5,7 @@ import 'inventory/add_product_screen.dart';
 import 'inventory/inventory_home_screen.dart';
 import 'profile_screen.dart';
 import 'orders_screen.dart';
+import '../common/notifications_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -126,35 +127,72 @@ class _DashboardScreenState extends State<DashboardScreen> {
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
         ),
         actions: [
-          // Notification Icon with badge
-          IconButton(
-            icon: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                const Icon(Icons.notifications_outlined, color: Colors.white, size: 22),
-                Positioned(
-                  right: -2,
-                  top: -2,
-                  child: Container(
-                    width: 8,
-                    height: 8,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF00B4D8),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
+          // Notification Icon with dynamic unread badge
+          StreamBuilder<QuerySnapshot>(
+            stream: currentUser != null
+                ? FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(currentUser!.uid)
+                    .collection('notifications')
+                    .snapshots()
+                : const Stream.empty(),
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return IconButton(
+                  icon: const Icon(Icons.notifications_outlined, color: Colors.white, size: 22),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const NotificationsScreen()),
+                    );
+                  },
+                  tooltip: 'Notifications',
+                );
+              }
+              final docs = snapshot.data?.docs ?? [];
+              final unreadCount = docs.where((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                return data['isRead'] != true && data['read'] != true;
+              }).length;
+
+              return IconButton(
+                icon: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    const Icon(Icons.notifications_outlined, color: Colors.white, size: 22),
+                    if (unreadCount > 0)
+                      Positioned(
+                        right: -4,
+                        top: -4,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF00B4D8),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          constraints: const BoxConstraints(minWidth: 14, minHeight: 14),
+                          child: Text(
+                            unreadCount > 99 ? '99+' : unreadCount.toString(),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-              ],
-            ),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('No new notifications'),
-                  duration: Duration(seconds: 2),
-                ),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const NotificationsScreen()),
+                  );
+                },
+                tooltip: 'Notifications',
               );
             },
-            tooltip: 'Notifications',
           ),
           IconButton(
             icon: const Icon(Icons.person_outline_rounded, color: Colors.white, size: 22),
