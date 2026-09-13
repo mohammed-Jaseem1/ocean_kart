@@ -29,11 +29,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
-        final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+        final doc = await FirebaseFirestore.instance.collection('shop_owners').doc(user.uid).get();
         if (doc.exists) {
           setState(() {
             _userData = doc.data() as Map<String, dynamic>;
           });
+        } else {
+          final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+          if (userDoc.exists) {
+            setState(() {
+              _userData = userDoc.data() as Map<String, dynamic>;
+            });
+          }
         }
       }
     } catch (e) {
@@ -57,9 +64,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (user == null) return;
 
     try {
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+      await FirebaseFirestore.instance.collection('shop_owners').doc(user.uid).set({
         'isStoreOpen': newStatus,
-      });
+      }, SetOptions(merge: true));
+
+      try {
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'isStoreOpen': newStatus,
+        }, SetOptions(merge: true));
+      } catch (e) {
+        debugPrint('Legacy user store open sync skipped: $e');
+      }
       setState(() {
         _userData['isStoreOpen'] = newStatus;
       });
@@ -199,11 +214,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(
-                            color: isStoreOpen ? Colors.green.shade200 : Colors.red.shade200,
+                            color: isStoreOpen ? Colors.green.shade200 : _cardBorder,
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: (isStoreOpen ? Colors.green : Colors.red).withValues(alpha: 0.05),
+                              color: (isStoreOpen ? Colors.green : Colors.grey).withValues(alpha: 0.05),
                               blurRadius: 12,
                               offset: const Offset(0, 4),
                             ),
@@ -214,12 +229,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             Container(
                               padding: const EdgeInsets.all(10),
                               decoration: BoxDecoration(
-                                color: isStoreOpen ? Colors.green.shade50 : Colors.red.shade50,
+                                color: isStoreOpen ? Colors.green.shade50 : const Color(0xFFF1F5F9),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Icon(
                                 isStoreOpen ? Icons.store_rounded : Icons.store_outlined,
-                                color: isStoreOpen ? Colors.green.shade700 : Colors.red.shade700,
+                                color: isStoreOpen ? Colors.green.shade700 : const Color(0xFF64748B),
                                 size: 24,
                               ),
                             ),
@@ -235,7 +250,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         style: TextStyle(
                                           fontSize: 16,
                                           fontWeight: FontWeight.bold,
-                                          color: isStoreOpen ? Colors.green.shade800 : Colors.red.shade800,
+                                          color: isStoreOpen ? Colors.green.shade800 : _darkNavy,
                                         ),
                                       ),
                                     ],
@@ -252,8 +267,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               value: isStoreOpen,
                               activeThumbColor: Colors.green.shade600,
                               activeTrackColor: Colors.green.shade100,
-                              inactiveThumbColor: Colors.red.shade400,
-                              inactiveTrackColor: Colors.red.shade100,
+                              inactiveThumbColor: Colors.grey.shade400,
+                              inactiveTrackColor: Colors.grey.shade200,
                               onChanged: (val) => _toggleStoreOpenStatus(isStoreOpen),
                             ),
                           ],

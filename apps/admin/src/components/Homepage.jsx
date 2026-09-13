@@ -35,7 +35,7 @@ const Homepage = ({ user, onSignOut }) => {
     let fetchedUsers = [];
     let fetchedOrders = [];
 
-    // 1. Fetch Users & Recent Sign-ups
+    // 1. Fetch Users, Shop Owners, Delivery Partners & Recent Sign-ups
     try {
       const usersSnapshot = await getDocs(collection(db, 'users'));
       usersSnapshot.forEach(docSnap => {
@@ -45,6 +45,28 @@ const Homepage = ({ user, onSignOut }) => {
         }
         fetchedUsers.push({ id: docSnap.id, ...data });
       });
+
+      try {
+        const shopsSnapshot = await getDocs(collection(db, 'shop_owners'));
+        shopsSnapshot.forEach(docSnap => {
+          const data = docSnap.data();
+          if (data.status === 'active' || !data.status) {
+            activeUsersCount++;
+          }
+          fetchedUsers.push({ id: docSnap.id, ...data });
+        });
+      } catch (e) {}
+
+      try {
+        const deliverySnapshot = await getDocs(collection(db, 'delivery_partners'));
+        deliverySnapshot.forEach(docSnap => {
+          const data = docSnap.data();
+          if (data.status === 'active' || !data.status) {
+            activeUsersCount++;
+          }
+          fetchedUsers.push({ id: docSnap.id, ...data });
+        });
+      } catch (e) {}
 
       fetchedUsers = fetchedUsers.sort((a, b) => {
         const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : (a.createdAt ? new Date(a.createdAt) : new Date(0));

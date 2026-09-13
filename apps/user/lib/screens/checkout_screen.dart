@@ -472,10 +472,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
 
     try {
-      final shopDoc = await FirebaseFirestore.instance
-          .collection('users')
+      var shopDoc = await FirebaseFirestore.instance
+          .collection('shop_owners')
           .doc(shopId)
           .get();
+      if (!shopDoc.exists) {
+        shopDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(shopId)
+            .get();
+      }
 
       if (!shopDoc.exists) return true;
 
@@ -598,12 +604,21 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         final String name = item['name'] ?? 'Product';
 
         if (shopId != null && productId != null) {
-          final productDoc = await FirebaseFirestore.instance
-              .collection('users')
+          var productDoc = await FirebaseFirestore.instance
+              .collection('shop_owners')
               .doc(shopId)
               .collection('products')
               .doc(productId)
               .get();
+
+          if (!productDoc.exists) {
+            productDoc = await FirebaseFirestore.instance
+                .collection('users')
+                .doc(shopId)
+                .collection('products')
+                .doc(productId)
+                .get();
+          }
 
           if (!productDoc.exists) {
             if (mounted) {
@@ -674,8 +689,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       // Trigger Notification for Shop Owner
       if (shopId.isNotEmpty) {
         try {
+          var shopDoc = await FirebaseFirestore.instance
+              .collection('shop_owners')
+              .doc(shopId)
+              .get();
+          final String shopCollection = shopDoc.exists ? 'shop_owners' : 'users';
+
           await FirebaseFirestore.instance
-              .collection('users')
+              .collection(shopCollection)
               .doc(shopId)
               .collection('notifications')
               .add({
@@ -721,11 +742,20 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             productId != null &&
             shopId.isNotEmpty &&
             productId.isNotEmpty) {
-          final productRef = FirebaseFirestore.instance
-              .collection('users')
+          var productRef = FirebaseFirestore.instance
+              .collection('shop_owners')
               .doc(shopId)
               .collection('products')
               .doc(productId);
+
+          final productDoc = await productRef.get();
+          if (!productDoc.exists) {
+            productRef = FirebaseFirestore.instance
+                .collection('users')
+                .doc(shopId)
+                .collection('products')
+                .doc(productId);
+          }
 
           try {
             await FirebaseFirestore.instance

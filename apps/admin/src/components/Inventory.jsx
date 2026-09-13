@@ -16,14 +16,31 @@ const Inventory = () => {
   const fetchAllInventory = async () => {
     setLoading(true);
     try {
-      // First, get all shopkeepers to map shopId to shopName
-      const usersQuery = query(collection(db, 'users'), where('role', '==', 'Shopkeeper'));
-      const usersSnapshot = await getDocs(usersQuery);
+      // First, get all shopkeepers from shop_owners (and fallback to users) to map shopId to shopName
       const shops = {};
-      usersSnapshot.forEach(doc => {
-        const shopName = doc.data().shopName || doc.data().name || 'Unknown Shop';
-        shops[doc.id] = shopName;
-      });
+      
+      try {
+        const shopOwnersSnapshot = await getDocs(collection(db, 'shop_owners'));
+        shopOwnersSnapshot.forEach(doc => {
+          const shopName = doc.data().shopName || doc.data().name || 'Unknown Shop';
+          shops[doc.id] = shopName;
+        });
+      } catch (err) {
+        console.warn('Error fetching shop_owners for inventory:', err);
+      }
+
+      try {
+        const usersQuery = query(collection(db, 'users'), where('role', '==', 'Shopkeeper'));
+        const usersSnapshot = await getDocs(usersQuery);
+        usersSnapshot.forEach(doc => {
+          if (!shops[doc.id]) {
+            const shopName = doc.data().shopName || doc.data().name || 'Unknown Shop';
+            shops[doc.id] = shopName;
+          }
+        });
+      } catch (err) {
+        console.warn('Error fetching legacy user shopkeepers:', err);
+      }
 
       // Now fetch all products using collectionGroup
       const productsSnapshot = await getDocs(collectionGroup(db, 'products'));
@@ -32,13 +49,14 @@ const Inventory = () => {
       productsSnapshot.forEach(doc => {
         const data = doc.data();
         const ref = doc.ref;
-        // The parent of the products collection is the user document
+        // The parent of the products collection is the shop_owner or user document
         const shopId = ref.parent.parent?.id;
 
         fetchedProducts.push({
           id: doc.id,
           shopId: shopId,
           shopName: shopId ? shops[shopId] || 'Unknown Shop' : 'Unknown Shop',
+          parentCollection: ref.parent.parent?.parent?.id || 'shop_owners',
           ...data
         });
       });
@@ -69,7 +87,8 @@ const Inventory = () => {
 
   const handleSaveEdit = async (product) => {
     try {
-      const productRef = doc(db, 'users', product.shopId, 'products', product.id);
+      const parentCol = product.parentCollection === 'users' ? 'users' : 'shop_owners';
+      const productRef = doc(db, parentCol, product.shopId, 'products', product.id);
 
       let newStock = product.stockQuantity || 0;
       const amount = parseInt(editForm.stockAmount, 10);
@@ -113,7 +132,8 @@ const Inventory = () => {
   const handleDelete = async (product) => {
     if (!window.confirm("Are you sure you want to delete this product?")) return;
     try {
-      const productRef = doc(db, 'users', product.shopId, 'products', product.id);
+      const parentCol = product.parentCollection === 'users' ? 'users' : 'shop_owners';
+      const productRef = doc(db, parentCol, product.shopId, 'products', product.id);
       await deleteDoc(productRef);
       setProducts(products.filter(p => p.id !== product.id));
     } catch (err) {

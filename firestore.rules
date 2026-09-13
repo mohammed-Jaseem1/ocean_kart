@@ -57,6 +57,25 @@ service cloud.firestore {
       allow read: if true;
       allow create, update: if isAuthenticated() && (request.auth.uid == shopOwnerId || isAdmin());
       allow delete: if isAdmin();
+
+      match /products/{productId} {
+        allow read: if true;
+        allow write: if isAuthenticated() && (request.auth.uid == shopOwnerId || isAdmin());
+      }
+
+      match /notifications/{notificationId} {
+        allow read, write: if isAuthenticated();
+      }
+    }
+
+    match /delivery_partners/{partnerId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && (request.auth.uid == partnerId || isAdmin());
+      allow delete: if isAdmin();
+
+      match /notifications/{notificationId} {
+        allow read, write: if isAuthenticated();
+      }
     }
 
     match /orders/{orderId} {

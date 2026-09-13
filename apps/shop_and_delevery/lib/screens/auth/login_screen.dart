@@ -45,24 +45,33 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (!mounted) return;
 
-      // Safely check user role and status in Firestore
-      final userDoc = await FirebaseFirestore.instance
-          .collection('users')
+      // Safely check user role and status in Firestore across collections
+      final shopDoc = await FirebaseFirestore.instance
+          .collection('shop_owners')
           .doc(userCredential.user!.uid)
           .get(const GetOptions(source: Source.server));
 
       Map<String, dynamic>? userData;
 
-      if (userDoc.exists) {
-        userData = userDoc.data();
+      if (shopDoc.exists) {
+        userData = shopDoc.data();
       } else {
-        final shopDoc = await FirebaseFirestore.instance
-            .collection('shop_owners')
+        final deliveryDoc = await FirebaseFirestore.instance
+            .collection('delivery_partners')
             .doc(userCredential.user!.uid)
             .get(const GetOptions(source: Source.server));
 
-        if (shopDoc.exists) {
-          userData = shopDoc.data();
+        if (deliveryDoc.exists) {
+          userData = deliveryDoc.data();
+        } else {
+          final userDoc = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(userCredential.user!.uid)
+              .get(const GetOptions(source: Source.server));
+
+          if (userDoc.exists) {
+            userData = userDoc.data();
+          }
         }
       }
 

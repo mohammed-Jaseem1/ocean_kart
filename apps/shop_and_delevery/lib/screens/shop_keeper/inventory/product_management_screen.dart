@@ -39,11 +39,22 @@ class _ProductManagementScreenState extends State<ProductManagementScreen> {
     if (confirm == true && mounted && user != null) {
       try {
         await FirebaseFirestore.instance
-            .collection('users')
+            .collection('shop_owners')
             .doc(user!.uid)
             .collection('products')
             .doc(productId)
             .delete();
+
+        try {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user!.uid)
+              .collection('products')
+              .doc(productId)
+              .delete();
+        } catch (e) {
+          debugPrint('Legacy user product deletion skipped: $e');
+        }
             
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -81,7 +92,7 @@ class _ProductManagementScreenState extends State<ProductManagementScreen> {
           ? const Center(child: Text('Not logged in', style: TextStyle(color: accentColor)))
           : StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
-                  .collection('users')
+                  .collection('shop_owners')
                   .doc(user!.uid)
                   .collection('products')
                   .snapshots(),

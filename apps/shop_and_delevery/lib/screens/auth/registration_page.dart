@@ -150,8 +150,9 @@ class _RegistrationPageState extends State<RegistrationPage> {
       // Add emailVerified
       userData['emailVerified'] = false;
 
-      // Save to Firestore
-      await FirebaseFirestore.instance.collection('users').doc(uid).set(userData);
+      // Save to dedicated Firestore collection based on role
+      final String targetCollection = _selectedRole == 'Shopkeeper' ? 'shop_owners' : 'delivery_partners';
+      await FirebaseFirestore.instance.collection(targetCollection).doc(uid).set(userData);
 
       // Send Email Verification link
       await userCredential.user!.sendEmailVerification();

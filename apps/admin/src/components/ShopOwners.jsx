@@ -78,11 +78,6 @@ const ShopOwners = () => {
           deliveryRadiusKm: parseFloat(formData.deliveryRadiusKm) || 10,
         };
         await updateDoc(doc(db, 'shop_owners', editingId), updateData);
-        try {
-          await updateDoc(doc(db, 'users', editingId), updateData);
-        } catch (err) {
-          console.log('User doc update optional note:', err);
-        }
         alert('Shop Owner updated successfully!');
       } else {
         let uid = null;
@@ -128,7 +123,6 @@ const ShopOwners = () => {
         };
 
         await setDoc(doc(db, 'shop_owners', uid), ownerRecord);
-        await setDoc(doc(db, 'users', uid), ownerRecord);
 
         alert('Shop Owner created successfully! They can now log in immediately.');
       }
@@ -175,9 +169,6 @@ const ShopOwners = () => {
     setActionLoading(ownerId);
     try {
       await updateDoc(doc(db, 'shop_owners', ownerId), { status: newStatus });
-      try {
-        await updateDoc(doc(db, 'users', ownerId), { status: newStatus });
-      } catch (e) {}
       setShopOwners(prev =>
         prev.map(item => item.id === ownerId ? { ...item, status: newStatus } : item)
       );

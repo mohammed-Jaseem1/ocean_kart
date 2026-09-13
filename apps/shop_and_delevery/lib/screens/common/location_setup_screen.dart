@@ -240,18 +240,20 @@ class _LocationSetupScreenState extends State<LocationSetupScreen> with SingleTi
         'locationUpdatedAt': FieldValue.serverTimestamp(),
       };
 
-      // 1. Update user document
+      // Update corresponding role collection
+      final String targetCollection = widget.role == 'Shopkeeper' ? 'shop_owners' : 'delivery_partners';
       await FirebaseFirestore.instance
-          .collection('users')
+          .collection(targetCollection)
           .doc(user.uid)
           .set(updatePayload, SetOptions(merge: true));
 
-      // 2. If shopkeeper, sync to shop_owners collection as well
-      if (widget.role == 'Shopkeeper') {
+      try {
         await FirebaseFirestore.instance
-            .collection('shop_owners')
+            .collection('users')
             .doc(user.uid)
             .set(updatePayload, SetOptions(merge: true));
+      } catch (e) {
+        debugPrint('Legacy user collection sync skipped or failed: $e');
       }
 
       if (mounted) {

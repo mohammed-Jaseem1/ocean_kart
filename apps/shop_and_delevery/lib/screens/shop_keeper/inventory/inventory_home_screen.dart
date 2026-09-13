@@ -32,7 +32,7 @@ class _InventoryHomeScreenState extends State<InventoryHomeScreen> with Automati
     final newStatus = currentlyActive ? 'inactive' : 'active';
     try {
       await FirebaseFirestore.instance
-          .collection('users')
+          .collection('shop_owners')
           .doc(currentUser.uid)
           .collection('products')
           .doc(productId)
@@ -40,6 +40,20 @@ class _InventoryHomeScreenState extends State<InventoryHomeScreen> with Automati
             'status': newStatus,
             'isAvailable': !currentlyActive,
           });
+
+      try {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(currentUser.uid)
+            .collection('products')
+            .doc(productId)
+            .update({
+              'status': newStatus,
+              'isAvailable': !currentlyActive,
+            });
+      } catch (e) {
+        debugPrint('Legacy user product status update skipped: $e');
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -86,11 +100,22 @@ class _InventoryHomeScreenState extends State<InventoryHomeScreen> with Automati
     if (confirm == true && user != null) {
       try {
         await FirebaseFirestore.instance
-            .collection('users')
+            .collection('shop_owners')
             .doc(user!.uid)
             .collection('products')
             .doc(productId)
             .delete();
+
+        try {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user!.uid)
+              .collection('products')
+              .doc(productId)
+              .delete();
+        } catch (e) {
+          debugPrint('Legacy user product delete skipped: $e');
+        }
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -139,7 +164,7 @@ class _InventoryHomeScreenState extends State<InventoryHomeScreen> with Automati
             )
           : StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
-                  .collection('users')
+                  .collection('shop_owners')
                   .doc(currentUser.uid)
                   .collection('products')
                   .snapshots(),
@@ -186,23 +211,6 @@ class _InventoryHomeScreenState extends State<InventoryHomeScreen> with Automati
                             'Add items to your catalog so customers can view and place orders.',
                             textAlign: TextAlign.center,
                             style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
-                          ),
-                          const SizedBox(height: 24),
-                          ElevatedButton.icon(
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(builder: (context) => const AddProductScreen()),
-                              );
-                            },
-                            icon: const Icon(Icons.add_rounded, color: Colors.white),
-                            label: const Text('Add Your First Product', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: navyBlue,
-                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                              elevation: 0,
-                            ),
                           ),
                         ],
                       ),

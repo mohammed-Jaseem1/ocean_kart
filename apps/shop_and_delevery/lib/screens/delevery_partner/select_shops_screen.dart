@@ -46,7 +46,7 @@ class _SelectShopsScreenState extends State<SelectShopsScreen> {
     if (currentUser == null) return;
     try {
       final doc = await FirebaseFirestore.instance
-          .collection('users')
+          .collection('delivery_partners')
           .doc(currentUser!.uid)
           .get();
 
@@ -58,12 +58,28 @@ class _SelectShopsScreenState extends State<SelectShopsScreen> {
         setState(() {
           _assignedShopIds = assigned;
           _pendingShopIds = requested;
-          // Combine for initial checkboxes
           _selectedShopIds = {...assigned, ...requested}.toList();
           _isLoading = false;
         });
       } else {
-        setState(() => _isLoading = false);
+        final userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(currentUser!.uid)
+            .get();
+        if (userDoc.exists) {
+          final data = userDoc.data() as Map<String, dynamic>;
+          final assigned = List<String>.from(data['assignedShopIds'] ?? []);
+          final requested = List<String>.from(data['requestedShopIds'] ?? []);
+
+          setState(() {
+            _assignedShopIds = assigned;
+            _pendingShopIds = requested;
+            _selectedShopIds = {...assigned, ...requested}.toList();
+            _isLoading = false;
+          });
+        } else {
+          setState(() => _isLoading = false);
+        }
       }
     } catch (e) {
       debugPrint('Error loading assigned shops: $e');
@@ -99,20 +115,30 @@ class _SelectShopsScreenState extends State<SelectShopsScreen> {
         }
       }
 
-      // Keep already assigned shops, put newly selected ones in requestedShopIds
       final newRequests = _selectedShopIds
           .where((id) => !_assignedShopIds.contains(id))
           .toList();
 
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(currentUser!.uid)
-          .set({
+      final updateData = {
         'requestedShopIds': _selectedShopIds,
         'requestedShopNames': requestedNames,
         'shopRequestStatus': 'pending',
         'shopRequestUpdatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      };
+
+      await FirebaseFirestore.instance
+          .collection('delivery_partners')
+          .doc(currentUser!.uid)
+          .set(updateData, SetOptions(merge: true));
+
+      try {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(currentUser!.uid)
+            .set(updateData, SetOptions(merge: true));
+      } catch (e) {
+        debugPrint('Legacy user sync for shop selection skipped: $e');
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

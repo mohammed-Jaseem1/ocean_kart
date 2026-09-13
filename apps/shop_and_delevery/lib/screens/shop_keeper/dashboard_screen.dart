@@ -32,34 +32,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _fetchDashboardData();
   }
 
-  Future<void> _cleanDatabaseFields() async {
-    if (currentUser == null) return;
-    try {
-      final docRef = FirebaseFirestore.instance.collection('users').doc(currentUser!.uid);
-      final doc = await docRef.get();
-      if (doc.exists) {
-        final data = doc.data() as Map<String, dynamic>;
-        final deletes = <String, dynamic>{};
-        if (data.containsKey('isOpen')) deletes['isOpen'] = FieldValue.delete();
-        if (data.containsKey('isAvailable')) deletes['isAvailable'] = FieldValue.delete();
-        if (data.containsKey('storeStatus')) deletes['storeStatus'] = FieldValue.delete();
-        if (data.containsKey('locationPinned')) deletes['locationPinned'] = FieldValue.delete();
-
-        if (deletes.isNotEmpty) {
-          await docRef.update(deletes);
-          debugPrint('Cleaned DB fields for currentUser ${currentUser!.uid}');
-        }
-      }
-    } catch (e) {
-      debugPrint('DB cleanup error: $e');
-    }
-  }
-
   Future<void> _fetchDashboardData() async {
     if (currentUser == null) return;
     
     try {
-      await _cleanDatabaseFields();
       final now = DateTime.now();
       final startOfDay = DateTime(now.year, now.month, now.day);
       
@@ -97,7 +73,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
       // Also fetch shop details
       final userDoc = await FirebaseFirestore.instance
-          .collection('users')
+          .collection('shop_owners')
           .doc(currentUser!.uid)
           .get();
       
@@ -106,6 +82,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (userDoc.exists) {
         final uData = userDoc.data() as Map<String, dynamic>;
         shopName = uData['shopName'] ?? uData['name'] ?? 'My Store';
+      } else {
+        final legacyDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(currentUser!.uid)
+            .get();
+        if (legacyDoc.exists) {
+          final uData = legacyDoc.data() as Map<String, dynamic>;
+          shopName = uData['shopName'] ?? uData['name'] ?? 'My Store';
+        }
       }
 
       if (mounted) {
@@ -124,32 +109,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         setState(() {
           isLoading = false;
         });
-      }
-    }
-  }
-
-  Future<void> _toggleStoreStatus(bool currentIsOpen) async {
-    final user = currentUser;
-    if (user == null) return;
-    final newStatus = !currentIsOpen;
-    try {
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
-        'isStoreOpen': newStatus,
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(newStatus ? 'Store is now OPEN for orders' : 'Store is now CLOSED for orders'),
-            backgroundColor: newStatus ? Colors.green : Colors.redAccent,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error updating store status: $e'), backgroundColor: Colors.red),
-        );
       }
     }
   }
@@ -190,65 +149,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
           style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
         ),
         actions: [
-          // Live Store Open / Close Status Toggle Chip
-          StreamBuilder<DocumentSnapshot>(
-            stream: currentUser != null
-                ? FirebaseFirestore.instance.collection('users').doc(currentUser!.uid).snapshots()
-                : const Stream.empty(),
-            builder: (context, snapshot) {
-              final data = snapshot.data?.data() as Map<String, dynamic>?;
-              final bool isOpen = data?['isStoreOpen'] == true;
-              return Center(
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: InkWell(
-                    onTap: () => _toggleStoreStatus(isOpen),
-                    borderRadius: BorderRadius.circular(20),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 250),
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: isOpen ? Colors.green.shade600 : Colors.red.shade600,
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: (isOpen ? Colors.green : Colors.red).withValues(alpha: 0.3),
-                            blurRadius: 6,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 7,
-                            height: 7,
-                            decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                          ),
-                          const SizedBox(width: 5),
-                          Text(
-                            isOpen ? 'OPEN' : 'CLOSED',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w900,
-                              fontSize: 11,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
           // Notification Icon with dynamic unread badge
           StreamBuilder<QuerySnapshot>(
             stream: currentUser != null
                 ? FirebaseFirestore.instance
-                    .collection('users')
+                    .collection('shop_owners')
                     .doc(currentUser!.uid)
                     .collection('notifications')
                     .snapshots()

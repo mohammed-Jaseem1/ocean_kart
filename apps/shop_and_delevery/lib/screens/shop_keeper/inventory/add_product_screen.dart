@@ -242,7 +242,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception('No user logged in');
 
-      final productsRef = FirebaseFirestore.instance.collection('users').doc(user.uid).collection('products');
+      final productsRef = FirebaseFirestore.instance.collection('shop_owners').doc(user.uid).collection('products');
       
       final productPayload = {
         'shopId': user.uid,

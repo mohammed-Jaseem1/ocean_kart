@@ -58,15 +58,32 @@ const DeliveryBoys = () => {
   const fetchDeliveryPartners = async () => {
     setLoading(true);
     try {
-      const q = query(collection(db, 'users'));
+      const q = query(collection(db, 'delivery_partners'));
       const snapshot = await getDocs(q);
       const fetched = [];
+      const seenIds = new Set();
+
       snapshot.forEach((docSnap) => {
-        const data = docSnap.data();
-        if (data.role === 'Delivery Boy' || data.role === 'delivery_partner' || data.vehicleNumber || data.deliveryStatus) {
-          fetched.push({ id: docSnap.id, ...data });
-        }
+        seenIds.add(docSnap.id);
+        fetched.push({ id: docSnap.id, ...docSnap.data() });
       });
+
+      // Fallback query to legacy 'users' collection for delivery boys not yet migrated
+      try {
+        const usersQ = query(collection(db, 'users'));
+        const usersSnapshot = await getDocs(usersQ);
+        usersSnapshot.forEach((docSnap) => {
+          if (!seenIds.has(docSnap.id)) {
+            const data = docSnap.data();
+            if (data.role === 'Delivery Boy' || data.role === 'delivery_partner' || data.vehicleNumber || data.deliveryStatus) {
+              fetched.push({ id: docSnap.id, ...data });
+            }
+          }
+        });
+      } catch (legacyErr) {
+        console.warn('Legacy users fetch notice:', legacyErr);
+      }
+
       setDeliveryPartners(fetched);
     } catch (err) {
       console.error('Error fetching delivery partners:', err);
@@ -110,7 +127,7 @@ const DeliveryBoys = () => {
           vehicleNumber: formData.vehicleNumber || 'KL-07-Temp',
           vehicleType: formData.vehicleType || 'Motorcycle / Scooter',
         };
-        await updateDoc(doc(db, 'users', editingId), updateData);
+        await updateDoc(doc(db, 'delivery_partners', editingId), updateData);
         alert('Delivery Partner updated successfully!');
       } else {
         let uid = null;
@@ -136,7 +153,7 @@ const DeliveryBoys = () => {
           await signOut(secondaryAuth);
         }
         
-        await setDoc(doc(db, 'users', uid), {
+        await setDoc(doc(db, 'delivery_partners', uid), {
           uid,
           email: formData.email,
           role: 'Delivery Boy',
@@ -205,14 +222,19 @@ const DeliveryBoys = () => {
         .filter(s => selectedShopIds.includes(s.id))
         .map(s => s.name);
 
-      await updateDoc(doc(db, 'users', selectedPartnerForShops.id), {
+      const updateData = {
         assignedShopIds: selectedShopIds,
         assignedShopNames: assignedNames,
         requestedShopIds: [],
         requestedShopNames: [],
         shopRequestStatus: 'approved',
         shopsAssignedAt: serverTimestamp()
-      });
+      };
+
+      await updateDoc(doc(db, 'delivery_partners', selectedPartnerForShops.id), updateData);
+      try {
+        await updateDoc(doc(db, 'users', selectedPartnerForShops.id), updateData);
+      } catch (e) {}
 
       alert(`Successfully assigned ${selectedShopIds.length} shop(s) to ${selectedPartnerForShops.name || 'partner'}!`);
       setShowAssignModal(false);
@@ -238,14 +260,19 @@ const DeliveryBoys = () => {
         .filter(s => combinedIds.includes(s.id))
         .map(s => s.name);
 
-      await updateDoc(doc(db, 'users', partner.id), {
+      const updateData = {
         assignedShopIds: combinedIds,
         assignedShopNames: assignedNames,
         requestedShopIds: [],
         requestedShopNames: [],
         shopRequestStatus: 'approved',
         shopsAssignedAt: serverTimestamp()
-      });
+      };
+
+      await updateDoc(doc(db, 'delivery_partners', partner.id), updateData);
+      try {
+        await updateDoc(doc(db, 'users', partner.id), updateData);
+      } catch (e) {}
 
       alert(`Approved shop requests for ${partner.name || 'partner'}!`);
       fetchDeliveryPartners();
@@ -271,7 +298,10 @@ const DeliveryBoys = () => {
   const handleUpdateStatus = async (partnerId, newStatus) => {
     setActionLoading(partnerId);
     try {
-      await updateDoc(doc(db, 'users', partnerId), { status: newStatus });
+      await updateDoc(doc(db, 'delivery_partners', partnerId), { status: newStatus });
+      try {
+        await updateDoc(doc(db, 'users', partnerId), { status: newStatus });
+      } catch (e) {}
       setDeliveryPartners(prev =>
         prev.map(item => item.id === partnerId ? { ...item, status: newStatus } : item)
       );

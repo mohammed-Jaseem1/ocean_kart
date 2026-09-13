@@ -31,7 +31,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
 
   late Stream<QuerySnapshot> _productsStream;
-  late Stream<QuerySnapshot> _shopsStream;
+  late Stream<List<DocumentSnapshot>> _shopsStream;
 
   @override
   void initState() {
@@ -40,10 +40,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
         .collectionGroup('products')
         .snapshots();
     _shopsStream = FirebaseFirestore.instance
-        .collection('users')
-        .where('role', isEqualTo: 'Shopkeeper')
-        .where('status', isEqualTo: 'active')
-        .snapshots();
+        .collection('shop_owners')
+        .snapshots()
+        .asyncMap((shopOwnersSnap) async {
+      try {
+        final legacySnap = await FirebaseFirestore.instance
+            .collection('users')
+            .where('role', isEqualTo: 'Shopkeeper')
+            .where('status', isEqualTo: 'active')
+            .get();
+        final shopOwnerIds = shopOwnersSnap.docs.map((d) => d.id).toSet();
+        final combinedDocs = List<DocumentSnapshot>.from(
+          shopOwnersSnap.docs.where((d) {
+            final data = d.data() as Map<String, dynamic>?;
+            return data?['status'] != 'inactive' && data?['status'] != 'disabled';
+          }),
+        );
+        for (var doc in legacySnap.docs) {
+          if (!shopOwnerIds.contains(doc.id)) {
+            combinedDocs.add(doc);
+          }
+        }
+        return combinedDocs;
+      } catch (_) {
+        return shopOwnersSnap.docs;
+      }
+    });
   }
 
   Future<void> _addToCart(DocumentSnapshot doc) async {
@@ -830,13 +852,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildTopBrands() {
-    return StreamBuilder<QuerySnapshot>(
+    return StreamBuilder<List<DocumentSnapshot>>(
       stream: _shopsStream,
       builder: (context, snapshot) {
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+        if (!snapshot.hasData || snapshot.data!.isEmpty) {
           return const SizedBox();
         }
-        final shops = snapshot.data!.docs;
+        final shops = snapshot.data!;
         return SizedBox(
           height: 110,
           child: ListView.builder(

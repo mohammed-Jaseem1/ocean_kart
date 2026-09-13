@@ -429,7 +429,7 @@ class _DeliveryPartnerDashboardState extends State<DeliveryPartnerDashboard> {
   Widget _buildAvailableOrdersTab() {
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance
-          .collection('users')
+          .collection('delivery_partners')
           .doc(currentUser!.uid)
           .snapshots(),
       builder: (context, userSnap) {

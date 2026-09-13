@@ -31,7 +31,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       if (currentUser != null) {
         final doc = await FirebaseFirestore.instance
-            .collection('users')
+            .collection('delivery_partners')
             .doc(currentUser!.uid)
             .get();
         if (doc.exists) {
@@ -39,6 +39,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
           setState(() {
             _userData = data;
           });
+        } else {
+          final userDoc = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(currentUser!.uid)
+              .get();
+          if (userDoc.exists) {
+            final data = userDoc.data() as Map<String, dynamic>;
+            setState(() {
+              _userData = data;
+            });
+          }
         }
       }
     } catch (e) {
