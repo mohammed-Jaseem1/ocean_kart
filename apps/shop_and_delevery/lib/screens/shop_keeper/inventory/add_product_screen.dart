@@ -6,6 +6,7 @@ import 'package:image_cropper/image_cropper.dart';
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'dart:convert';
+import '../../../widgets/cached_product_image.dart';
 
 String? _processWebpInIsolate(Uint8List rawBytes) {
   try {
@@ -339,15 +340,6 @@ class _AddProductScreenState extends State<AddProductScreen> {
             itemBuilder: (context, index) {
               if (index < _productImages.length) {
                 final imgUrl = _productImages[index];
-                ImageProvider imgProvider;
-                if (imgUrl.startsWith('http')) {
-                  imgProvider = NetworkImage(imgUrl);
-                } else if (imgUrl.contains('base64,')) {
-                  final base64Str = imgUrl.split('base64,').last;
-                  imgProvider = MemoryImage(base64Decode(base64Str));
-                } else {
-                  imgProvider = MemoryImage(base64Decode(imgUrl));
-                }
 
                 return ReorderableDelayedDragStartListener(
                   key: ValueKey('img_${imgUrl.hashCode}_$index'),
@@ -365,10 +357,12 @@ class _AddProductScreenState extends State<AddProductScreen> {
                               color: index == 0 ? primaryBlue : Colors.grey.shade300,
                               width: index == 0 ? 2 : 1,
                             ),
-                            image: DecorationImage(
-                              image: imgProvider,
-                              fit: BoxFit.cover,
-                            ),
+                          ),
+                          child: CachedProductImage(
+                            imageSource: imgUrl,
+                            width: 100,
+                            height: 100,
+                            borderRadius: BorderRadius.circular(12),
                           ),
                         ),
                         if (index == 0)

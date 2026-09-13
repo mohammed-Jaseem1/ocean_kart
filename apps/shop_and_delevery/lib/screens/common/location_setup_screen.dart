@@ -235,7 +235,6 @@ class _LocationSetupScreenState extends State<LocationSetupScreen> with SingleTi
       final updatePayload = {
         'latitude': _currentPosition.latitude,
         'longitude': _currentPosition.longitude,
-        'locationPinned': true,
         'isLocationPinned': true,
         'pinnedAddress': _currentAddress,
         'locationUpdatedAt': FieldValue.serverTimestamp(),

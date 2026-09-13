@@ -192,7 +192,7 @@ class _AuthGateState extends State<AuthGate> {
                 if (role == 'Delivery Boy' || role == 'delivery_partner') {
                   return const DeliveryPartnerDashboard();
                 } else if (role == 'Shopkeeper') {
-                  final isPinned = (userData?['locationPinned'] == true || userData?['isLocationPinned'] == true) &&
+                  final isPinned = userData?['isLocationPinned'] == true &&
                       userData?['latitude'] != null &&
                       userData?['longitude'] != null;
 

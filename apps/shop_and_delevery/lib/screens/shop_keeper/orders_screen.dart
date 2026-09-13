@@ -10,7 +10,10 @@ class OrdersScreen extends StatefulWidget {
   State<OrdersScreen> createState() => _OrdersScreenState();
 }
 
-class _OrdersScreenState extends State<OrdersScreen> {
+class _OrdersScreenState extends State<OrdersScreen> with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   final User? currentUser = FirebaseAuth.instance.currentUser;
   final Color _navyBlue = const Color(0xFF0A1628);
   final Color _lightBlue = const Color(0xFF00B4D8);
@@ -89,6 +92,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     if (currentUser == null) {
       return const Center(child: Text("Please login to view orders."));
     }

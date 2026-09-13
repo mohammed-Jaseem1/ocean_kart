@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'add_product_screen.dart';
-import 'dart:convert';
+import '../../../widgets/cached_product_image.dart';
 
 class InventoryHomeScreen extends StatefulWidget {
   const InventoryHomeScreen({super.key});
@@ -11,22 +11,34 @@ class InventoryHomeScreen extends StatefulWidget {
   State<InventoryHomeScreen> createState() => _InventoryHomeScreenState();
 }
 
-class _InventoryHomeScreenState extends State<InventoryHomeScreen> {
-  final user = FirebaseAuth.instance.currentUser;
+class _InventoryHomeScreenState extends State<InventoryHomeScreen> with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  User? get user => FirebaseAuth.instance.currentUser;
   String _selectedCategory = 'All';
+  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   Future<void> _toggleProductStatus(String productId, bool currentlyActive) async {
+    final currentUser = user;
+    if (currentUser == null) return;
     final newStatus = currentlyActive ? 'inactive' : 'active';
     try {
       await FirebaseFirestore.instance
           .collection('users')
-          .doc(user!.uid)
+          .doc(currentUser.uid)
           .collection('products')
           .doc(productId)
           .update({
             'status': newStatus,
             'isAvailable': !currentlyActive,
-            'stockQuantity': currentlyActive ? 0.0 : 100.0,
           });
 
       if (mounted) {
@@ -47,297 +59,550 @@ class _InventoryHomeScreenState extends State<InventoryHomeScreen> {
     }
   }
 
-  Future<void> _editPrice(String productId, double currentPrice) async {
-    final priceController = TextEditingController(text: currentPrice.toString());
-    final result = await showDialog<double>(
+  Future<void> _deleteProduct(String productId, String productName) async {
+    final confirm = await showDialog<bool>(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Edit Sale Price (₹)', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          content: TextField(
-            controller: priceController,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            style: const TextStyle(color: Colors.black, fontSize: 16),
-            decoration: const InputDecoration(
-              hintText: 'Enter new price',
-              hintStyle: TextStyle(color: Colors.grey),
-              prefixText: '₹ ',
-              enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
-            ),
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Delete Product', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+        content: Text('Are you sure you want to delete "$productName"? This action cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
-            ElevatedButton(
-              onPressed: () {
-                final newPrice = double.tryParse(priceController.text);
-                Navigator.pop(context, newPrice);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF00B4D8),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-              child: const Text('Save', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            ),
-          ],
-        );
-      },
+            child: const Text('Delete', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
     );
 
-    if (result != null && result >= 0) {
+    if (confirm == true && user != null) {
       try {
         await FirebaseFirestore.instance
             .collection('users')
             .doc(user!.uid)
             .collection('products')
             .doc(productId)
-            .update({'pricePerKg': result});
+            .delete();
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Product deleted successfully'),
+              backgroundColor: Colors.redAccent,
+            ),
+          );
+        }
       } catch (e) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error updating price: $e')));
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error deleting product: $e'), backgroundColor: Colors.red),
+          );
+        }
       }
     }
   }
 
+
+
+  String _formatPrice(double val) {
+    if (val == val.roundToDouble()) {
+      return val.toInt().toString();
+    }
+    return val.toStringAsFixed(2);
+  }
+
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     const navyBlue = Color(0xFF0A1628);
     const lightBlue = Color(0xFF00B4D8);
     const backgroundWhite = Color(0xFFF5F7FA);
 
+    final currentUser = user;
+
     return Scaffold(
       backgroundColor: backgroundWhite,
-      body: user == null
-          ? const Center(child: Text('Not logged in'))
+      body: currentUser == null
+          ? const Center(
+              child: Text(
+                'Please log in to manage inventory',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+              ),
+            )
           : StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
                   .collection('users')
-                  .doc(user!.uid)
+                  .doc(currentUser.uid)
                   .collection('products')
                   .snapshots(),
               builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
+                if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
                   return const Center(child: CircularProgressIndicator(color: lightBlue));
                 }
                 if (snapshot.hasError) {
-                  return Center(child: Text('Error: ${snapshot.error}'));
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20.0),
+                      child: Text(
+                        'Error loading inventory: ${snapshot.error}',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.redAccent),
+                      ),
+                    ),
+                  );
                 }
                 final allDocs = snapshot.data?.docs ?? [];
-                
+
                 if (allDocs.isEmpty) {
                   return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.inventory_2_outlined, size: 64, color: Colors.grey.shade400),
-                        const SizedBox(height: 16),
-                        Text('No products in inventory', style: TextStyle(fontSize: 18, color: Colors.grey.shade600)),
-                        const SizedBox(height: 12),
-                        ElevatedButton.icon(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (context) => const AddProductScreen()),
-                            );
-                          },
-                          icon: const Icon(Icons.add, color: Colors.white),
-                          label: const Text('Add Your First Product', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: navyBlue,
-                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    child: Padding(
+                      padding: const EdgeInsets.all(24.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(24),
+                            decoration: BoxDecoration(
+                              color: lightBlue.withValues(alpha: 0.1),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.inventory_2_outlined, size: 64, color: lightBlue),
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 20),
+                          const Text(
+                            'No Products in Inventory',
+                            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Add items to your catalog so customers can view and place orders.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+                          ),
+                          const SizedBox(height: 24),
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (context) => const AddProductScreen()),
+                              );
+                            },
+                            icon: const Icon(Icons.add_rounded, color: Colors.white),
+                            label: const Text('Add Your First Product', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: navyBlue,
+                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                              elevation: 0,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   );
                 }
 
-                final Set<String> categories = {'All'};
+                // Extract Categories with count
+                final Map<String, int> categoryCounts = {'All': allDocs.length};
                 for (var doc in allDocs) {
                   final data = doc.data() as Map<String, dynamic>;
-                  if (data['category'] != null && data['category'].toString().trim().isNotEmpty) {
-                    categories.add(data['category']);
+                  final cat = (data['category'] ?? 'Others').toString().trim();
+                  if (cat.isNotEmpty) {
+                    categoryCounts[cat] = (categoryCounts[cat] ?? 0) + 1;
                   }
                 }
-                final categoryList = categories.toList();
+                final categoryList = categoryCounts.keys.toList();
 
+                // Filter by category and search
                 final docs = allDocs.where((doc) {
                   final data = doc.data() as Map<String, dynamic>;
                   final category = data['category'] ?? '';
-                  return _selectedCategory == 'All' || category == _selectedCategory;
+                  final name = (data['name'] ?? '').toString().toLowerCase();
+                  final malayalamName = (data['malayalamName'] ?? '').toString().toLowerCase();
+
+                  final matchesCategory = _selectedCategory == 'All' || category == _selectedCategory;
+                  final query = _searchQuery.toLowerCase();
+                  final matchesSearch = query.isEmpty || name.contains(query) || malayalamName.contains(query);
+
+                  return matchesCategory && matchesSearch;
                 }).toList();
 
                 return Column(
                   children: [
-                    SizedBox(
-                      height: 50,
-                      child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        itemCount: categoryList.length,
-                        itemBuilder: (context, index) {
-                          final category = categoryList[index];
-                          final isSelected = category == _selectedCategory;
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: ChoiceChip(
-                              label: Text(category, style: TextStyle(color: isSelected ? Colors.white : navyBlue, fontWeight: FontWeight.bold)),
-                              selected: isSelected,
-                              selectedColor: navyBlue,
-                              backgroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: Colors.grey.shade300)),
-                              showCheckmark: false,
-                              onSelected: (selected) {
+                    // Search and Filter Bar Header
+                    Container(
+                      color: Colors.white,
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                      child: Column(
+                        children: [
+                          // Search Box
+                          Container(
+                            height: 46,
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.grey.shade200),
+                            ),
+                            child: TextField(
+                              controller: _searchController,
+                              onChanged: (val) {
                                 setState(() {
-                                  _selectedCategory = category;
+                                  _searchQuery = val.trim();
                                 });
                               },
+                              style: const TextStyle(fontSize: 14, color: Color(0xFF0F172A)),
+                              decoration: InputDecoration(
+                                hintText: 'Search product name, category...',
+                                hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13.5),
+                                prefixIcon: Icon(Icons.search_rounded, color: Colors.grey.shade400, size: 20),
+                                suffixIcon: _searchQuery.isNotEmpty
+                                    ? GestureDetector(
+                                        onTap: () {
+                                          _searchController.clear();
+                                          setState(() {
+                                            _searchQuery = '';
+                                          });
+                                        },
+                                        child: Icon(Icons.cancel_rounded, color: Colors.grey.shade400, size: 18),
+                                      )
+                                    : null,
+                                border: InputBorder.none,
+                                contentPadding: const EdgeInsets.symmetric(vertical: 13),
+                              ),
                             ),
-                          );
-                        },
+                          ),
+                          const SizedBox(height: 10),
+
+                          // Horizontal Category Chips
+                          SizedBox(
+                            height: 38,
+                            child: ListView.builder(
+                              scrollDirection: Axis.horizontal,
+                              physics: const BouncingScrollPhysics(),
+                              itemCount: categoryList.length,
+                              itemBuilder: (context, index) {
+                                final category = categoryList[index];
+                                final count = categoryCounts[category] ?? 0;
+                                final isSelected = category == _selectedCategory;
+                                return Padding(
+                                  padding: const EdgeInsets.only(right: 8),
+                                  child: ChoiceChip(
+                                    label: Text(
+                                      '$category ($count)',
+                                      style: TextStyle(
+                                        color: isSelected ? Colors.white : navyBlue,
+                                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                    selected: isSelected,
+                                    selectedColor: navyBlue,
+                                    backgroundColor: Colors.grey.shade50,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(20),
+                                      side: BorderSide(
+                                        color: isSelected ? navyBlue : Colors.grey.shade300,
+                                      ),
+                                    ),
+                                    showCheckmark: false,
+                                    onSelected: (selected) {
+                                      if (selected) {
+                                        setState(() {
+                                          _selectedCategory = category;
+                                        });
+                                      }
+                                    },
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
                       ),
                     ),
+
+                    const Divider(height: 1, color: Color(0xFFE2E8F0)),
+
+                    // Product List
                     Expanded(
                       child: docs.isEmpty
                           ? Center(
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Icon(Icons.filter_alt_off_outlined, size: 64, color: Colors.grey.shade400),
-                                  const SizedBox(height: 16),
-                                  Text('No products found in category', style: TextStyle(fontSize: 18, color: Colors.grey.shade600)),
+                                  Icon(Icons.filter_alt_off_outlined, size: 56, color: Colors.grey.shade400),
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    'No matching products found',
+                                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey.shade700),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Try adjusting your search or category filter.',
+                                    style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
+                                  ),
                                 ],
                               ),
                             )
                           : ListView.builder(
-                              padding: const EdgeInsets.only(left: 16, right: 16, top: 16, bottom: 90),
+                              padding: const EdgeInsets.only(left: 16, right: 16, top: 14, bottom: 90),
                               itemCount: docs.length,
                               itemBuilder: (context, index) {
                                 final data = docs[index].data() as Map<String, dynamic>;
                                 final productId = docs[index].id;
-                                final currentPrice = (data['pricePerKg'] as num?)?.toDouble() ?? 0.0;
+                                final double price = (data['pricePerKg'] as num?)?.toDouble() ?? 0.0;
+                                final bool isOffer = data['isOffer'] == true;
+                                final double offerPrice = (data['offerPrice'] as num?)?.toDouble() ?? 0.0;
                                 final String status = (data['status'] ?? 'active').toString().toLowerCase();
                                 final bool isActive = status == 'active' && (data['isAvailable'] != false);
+                                final String name = data['name'] ?? 'Unknown Product';
+                                final String? malayalamName = data['malayalamName'];
 
-                                return Card(
-                                  color: Colors.white,
-                                  elevation: 2,
+                                return Container(
                                   margin: const EdgeInsets.only(bottom: 12),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(alpha: 0.03),
+                                        blurRadius: 10,
+                                        offset: const Offset(0, 3),
+                                      ),
+                                    ],
+                                  ),
                                   child: Padding(
-                                    padding: const EdgeInsets.all(12),
-                                    child: Row(
-                                      crossAxisAlignment: CrossAxisAlignment.center,
+                                    padding: const EdgeInsets.all(14),
+                                    child: Column(
                                       children: [
-                                        (() {
-                                          final imagesList = (data['images'] as List?)?.map((e) => e.toString()).toList();
-                                          final imgStr = (imagesList != null && imagesList.isNotEmpty)
-                                              ? imagesList.first
-                                              : (data['imageUrl']?.toString());
-
-                                          if (imgStr == null || imgStr.isEmpty) {
-                                            return Container(
-                                              width: 60,
-                                              height: 60,
-                                              decoration: BoxDecoration(
-                                                borderRadius: BorderRadius.circular(12),
-                                                color: Colors.grey.shade200,
-                                              ),
-                                              child: const Icon(Icons.image, color: Colors.grey),
-                                            );
-                                          }
-
-                                          ImageProvider imgProvider;
-                                          if (imgStr.startsWith('http')) {
-                                            imgProvider = NetworkImage(imgStr);
-                                          } else if (imgStr.contains('base64,')) {
-                                            final cleanBase64 = imgStr.split('base64,').last;
-                                            imgProvider = MemoryImage(base64Decode(cleanBase64));
-                                          } else {
-                                            imgProvider = MemoryImage(base64Decode(imgStr));
-                                          }
-
-                                          return Container(
-                                            width: 60,
-                                            height: 60,
-                                            decoration: BoxDecoration(
-                                              borderRadius: BorderRadius.circular(12),
-                                              image: DecorationImage(image: imgProvider, fit: BoxFit.cover),
-                                            ),
-                                          );
-                                        })(),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                data['malayalamName'] != null && data['malayalamName'].toString().isNotEmpty
-                                                    ? '${data['name'] ?? 'Unknown'} (${data['malayalamName']})'
-                                                    : data['name'] ?? 'Unknown',
-                                                style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15),
-                                              ),
-                                              const SizedBox(height: 2),
-                                              Text('${data['category'] ?? ''}', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-                                              const SizedBox(height: 6),
-                                              Row(
-                                                children: [
-                                                  Text('₹$currentPrice / kg', style: const TextStyle(color: lightBlue, fontWeight: FontWeight.bold, fontSize: 14)),
-                                                  const SizedBox(width: 6),
-                                                  InkWell(
-                                                    onTap: () => _editPrice(productId, currentPrice),
+                                        Row(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            // Image Preview Container
+                                            Stack(
+                                              children: [
+                                                Container(
+                                                  decoration: BoxDecoration(
+                                                    borderRadius: BorderRadius.circular(14),
+                                                    border: Border.all(color: Colors.grey.shade200),
+                                                  ),
+                                                  child: CachedProductImage(
+                                                    imageSource: () {
+                                                      final imagesList = (data['images'] as List?)?.map((e) => e.toString()).toList();
+                                                      return (imagesList != null && imagesList.isNotEmpty)
+                                                          ? imagesList.first
+                                                          : (data['imageUrl']?.toString());
+                                                    }(),
+                                                    width: 76,
+                                                    height: 76,
+                                                    fit: BoxFit.cover,
+                                                    borderRadius: BorderRadius.circular(14),
+                                                  ),
+                                                ),
+                                                if (isOffer)
+                                                  Positioned(
+                                                    top: 4,
+                                                    left: 4,
                                                     child: Container(
-                                                      padding: const EdgeInsets.all(4),
+                                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                                                       decoration: BoxDecoration(
-                                                        color: Colors.grey.shade100,
+                                                        color: Colors.redAccent,
                                                         borderRadius: BorderRadius.circular(6),
-                                                        border: Border.all(color: Colors.grey.shade300)
                                                       ),
-                                                      child: const Icon(Icons.edit, size: 13, color: Colors.black54),
+                                                      child: const Text(
+                                                        'OFFER',
+                                                        style: TextStyle(
+                                                          color: Colors.white,
+                                                          fontSize: 8.5,
+                                                          fontWeight: FontWeight.w900,
+                                                        ),
+                                                      ),
                                                     ),
+                                                  ),
+                                              ],
+                                            ),
+                                            const SizedBox(width: 14),
+
+                                            // Details Section
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  // Title & Malayalam Name
+                                                  Text(
+                                                    malayalamName != null && malayalamName.trim().isNotEmpty
+                                                        ? '$name ($malayalamName)'
+                                                        : name,
+                                                    style: const TextStyle(
+                                                      color: Color(0xFF0F172A),
+                                                      fontWeight: FontWeight.w800,
+                                                      fontSize: 15,
+                                                      height: 1.2,
+                                                    ),
+                                                    maxLines: 2,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                  const SizedBox(height: 4),
+
+                                                  // Category Chip & Stock Status Row
+                                                  Row(
+                                                    children: [
+                                                      Container(
+                                                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                                        decoration: BoxDecoration(
+                                                          color: const Color(0xFFF1F5F9),
+                                                          borderRadius: BorderRadius.circular(6),
+                                                        ),
+                                                        child: Text(
+                                                          data['category'] ?? 'General',
+                                                          style: const TextStyle(
+                                                            color: Color(0xFF475569),
+                                                            fontSize: 11,
+                                                            fontWeight: FontWeight.w600,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  const SizedBox(height: 8),
+
+                                                  // Price Row
+                                                  Row(
+                                                    children: [
+                                                      if (isOffer) ...[
+                                                        Text(
+                                                          '₹${_formatPrice(offerPrice)}',
+                                                          style: const TextStyle(
+                                                            color: Colors.redAccent,
+                                                            fontWeight: FontWeight.w900,
+                                                            fontSize: 16,
+                                                          ),
+                                                        ),
+                                                        const SizedBox(width: 6),
+                                                        Text(
+                                                          '₹${_formatPrice(price)}',
+                                                          style: TextStyle(
+                                                            color: Colors.grey.shade400,
+                                                            decoration: TextDecoration.lineThrough,
+                                                            fontSize: 12,
+                                                          ),
+                                                        ),
+                                                        Text(
+                                                          ' / kg',
+                                                          style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                                                        ),
+                                                      ] else ...[
+                                                        Text(
+                                                          '₹${_formatPrice(price)}',
+                                                          style: const TextStyle(
+                                                            color: lightBlue,
+                                                            fontWeight: FontWeight.w900,
+                                                            fontSize: 16,
+                                                          ),
+                                                        ),
+                                                        Text(
+                                                          ' / kg',
+                                                          style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                                                        ),
+                                                      ],
+                                                    ],
                                                   ),
                                                 ],
                                               ),
-                                            ],
-                                          ),
+                                            ),
+
+                                            // Active / Inactive Switch
+                                            Column(
+                                              crossAxisAlignment: CrossAxisAlignment.end,
+                                              children: [
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                                  decoration: BoxDecoration(
+                                                    color: isActive ? Colors.green.shade50 : Colors.red.shade50,
+                                                    borderRadius: BorderRadius.circular(12),
+                                                    border: Border.all(color: isActive ? Colors.green.shade200 : Colors.red.shade200),
+                                                  ),
+                                                  child: Text(
+                                                    isActive ? 'ACTIVE' : 'INACTIVE',
+                                                    style: TextStyle(
+                                                      fontSize: 9.5,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: isActive ? Colors.green.shade700 : Colors.red.shade700,
+                                                      letterSpacing: 0.5,
+                                                    ),
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 4),
+                                                Transform.scale(
+                                                  scale: 0.8,
+                                                  child: Switch(
+                                                    value: isActive,
+                                                    activeThumbColor: lightBlue,
+                                                    activeTrackColor: lightBlue.withValues(alpha: 0.3),
+                                                    inactiveThumbColor: Colors.grey.shade400,
+                                                    inactiveTrackColor: Colors.grey.shade200,
+                                                    onChanged: (val) => _toggleProductStatus(productId, isActive),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
                                         ),
 
-                                        // Active / Inactive Status Toggle
-                                        Column(
-                                          mainAxisAlignment: MainAxisAlignment.center,
-                                          crossAxisAlignment: CrossAxisAlignment.center,
+                                        const Divider(height: 20, color: Color(0xFFF1F5F9)),
+
+                                        // Action Buttons Row (Edit Details & Delete)
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.end,
                                           children: [
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                              decoration: BoxDecoration(
-                                                color: isActive ? Colors.green.shade50 : Colors.red.shade50,
-                                                borderRadius: BorderRadius.circular(12),
-                                                border: Border.all(color: isActive ? Colors.green.shade200 : Colors.red.shade200),
+                                            OutlinedButton.icon(
+                                              onPressed: () {
+                                                Navigator.push(
+                                                  context,
+                                                  MaterialPageRoute(
+                                                    builder: (context) => AddProductScreen(
+                                                      productId: productId,
+                                                      productData: data,
+                                                    ),
+                                                  ),
+                                                );
+                                              },
+                                              icon: const Icon(Icons.edit_note_rounded, size: 16, color: Color(0xFF00B4D8)),
+                                              label: const Text(
+                                                'Edit Details',
+                                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF00B4D8)),
                                               ),
-                                              child: Text(
-                                                isActive ? 'ACTIVE' : 'INACTIVE',
-                                                style: TextStyle(
-                                                  fontSize: 10,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: isActive ? Colors.green.shade700 : Colors.red.shade700,
-                                                  letterSpacing: 0.5,
-                                                ),
+                                              style: OutlinedButton.styleFrom(
+                                                side: const BorderSide(color: Color(0xFF00B4D8)),
+                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                                minimumSize: Size.zero,
+                                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                               ),
                                             ),
-                                            const SizedBox(height: 4),
-                                            Transform.scale(
-                                              scale: 0.85,
-                                              child: Switch(
-                                                value: isActive,
-                                                activeThumbColor: lightBlue,
-                                                activeTrackColor: lightBlue.withValues(alpha: 0.3),
-                                                inactiveThumbColor: Colors.grey.shade400,
-                                                inactiveTrackColor: Colors.grey.shade200,
-                                                onChanged: (val) => _toggleProductStatus(productId, isActive),
+                                            const SizedBox(width: 8),
+                                            OutlinedButton.icon(
+                                              onPressed: () => _deleteProduct(productId, name),
+                                              icon: const Icon(Icons.delete_outline_rounded, size: 16, color: Colors.redAccent),
+                                              label: const Text(
+                                                'Delete',
+                                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.redAccent),
+                                              ),
+                                              style: OutlinedButton.styleFrom(
+                                                side: BorderSide(color: Colors.red.shade200),
+                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                                minimumSize: Size.zero,
+                                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                               ),
                                             ),
                                           ],

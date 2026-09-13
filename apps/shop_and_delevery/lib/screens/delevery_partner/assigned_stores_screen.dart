@@ -265,7 +265,7 @@ class _AssignedStoresScreenState extends State<AssignedStoresScreen> {
   Widget _buildStoreCard(String shopId, String shopName, Map<String, dynamic> shopData) {
     final phone = shopData['phone'] ?? shopData['mobileNumber'] ?? 'N/A';
     final address = shopData['shopAddress'] ?? shopData['address'] ?? shopData['location'] ?? 'N/A';
-    final isShopActive = shopData['isAvailable'] ?? shopData['isOpen'] ?? true;
+    final isShopActive = shopData['isStoreOpen'] == true;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),

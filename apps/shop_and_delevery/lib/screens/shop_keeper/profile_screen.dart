@@ -51,10 +51,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _toggleStoreOpenStatus(bool currentStatus) async {
+    final newStatus = !currentStatus;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+        'isStoreOpen': newStatus,
+      });
+      setState(() {
+        _userData['isStoreOpen'] = newStatus;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(newStatus ? 'Store is now OPEN for orders' : 'Store is now CLOSED for orders'),
+            backgroundColor: newStatus ? Colors.green : Colors.redAccent,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error updating store status: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final bool isLocationPinned = (_userData['locationPinned'] == true || _userData['isLocationPinned'] == true) &&
-        _userData['latitude'] != null;
+    final bool isLocationPinned = _userData['isLocationPinned'] == true && _userData['latitude'] != null;
     final String pinnedAddress = _userData['pinnedAddress'] ?? _userData['shopAddress'] ?? _userData['address'] ?? 'Not configured yet';
 
     return Scaffold(
@@ -157,6 +186,80 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ],
                       ),
                     ),
+
+                    const SizedBox(height: 20),
+
+                    // Store Open / Closed Status Toggle Card
+                    (() {
+                      final bool isStoreOpen = _userData['isStoreOpen'] == true;
+
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: isStoreOpen ? Colors.green.shade200 : Colors.red.shade200,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: (isStoreOpen ? Colors.green : Colors.red).withValues(alpha: 0.05),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: isStoreOpen ? Colors.green.shade50 : Colors.red.shade50,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Icon(
+                                isStoreOpen ? Icons.store_rounded : Icons.store_outlined,
+                                color: isStoreOpen ? Colors.green.shade700 : Colors.red.shade700,
+                                size: 24,
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Text(
+                                        isStoreOpen ? 'Store is OPEN' : 'Store is CLOSED',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                          color: isStoreOpen ? Colors.green.shade800 : Colors.red.shade800,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    isStoreOpen ? 'Accepting customer orders' : 'Not accepting new orders',
+                                    style: const TextStyle(fontSize: 12, color: _textMuted),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Switch(
+                              value: isStoreOpen,
+                              activeThumbColor: Colors.green.shade600,
+                              activeTrackColor: Colors.green.shade100,
+                              inactiveThumbColor: Colors.red.shade400,
+                              inactiveTrackColor: Colors.red.shade100,
+                              onChanged: (val) => _toggleStoreOpenStatus(isStoreOpen),
+                            ),
+                          ],
+                        ),
+                      );
+                    })(),
 
                     const SizedBox(height: 20),
 

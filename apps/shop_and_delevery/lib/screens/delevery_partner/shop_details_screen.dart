@@ -173,7 +173,7 @@ class _ShopDetailsScreenState extends State<ShopDetailsScreen> with SingleTicker
         _shopData['address'] ??
         _shopData['location'] ??
         'N/A';
-    final isShopActive = _shopData['isAvailable'] ?? _shopData['isOpen'] ?? true;
+    final isShopActive = _shopData['isStoreOpen'] == true;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
