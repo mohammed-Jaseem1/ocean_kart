@@ -721,7 +721,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ),
 
-                    _buildInfoTile(Icons.person_outline_rounded, 'Owner Name', _userData['name'] ?? 'Not provided'),
+                    _buildInfoTile(Icons.store_outlined, 'Store Name', _userData['name'] ?? _userData['shopName'] ?? 'Not provided'),
                     _buildInfoTile(Icons.phone_outlined, 'Mobile Number', _userData['mobileNumber'] ?? _userData['phone'] ?? 'Not provided'),
                     _buildInfoTile(Icons.email_outlined, 'Email Address', _userData['email'] ?? 'Not provided'),
                     _buildInfoTile(Icons.store_mall_directory_outlined, 'Registered Address', _userData['shopAddress'] ?? _userData['address'] ?? 'Not provided'),

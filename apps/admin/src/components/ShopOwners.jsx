@@ -68,10 +68,8 @@ const ShopOwners = () => {
       if (isEditing) {
         const updateData = {
           name: formData.name,
-          shopName: formData.name,
           mobileNumber: formData.mobileNumber,
           address: formData.address,
-          shopAddress: formData.address,
           location: formData.location,
           landmark: formData.landmark,
           pincode: formData.pincode,
@@ -107,11 +105,9 @@ const ShopOwners = () => {
           uid,
           email: formData.email,
           name: formData.name,
-          shopName: formData.name,
           role: 'Shopkeeper',
           mobileNumber: formData.mobileNumber,
           address: formData.address,
-          shopAddress: formData.address,
           location: formData.location,
           landmark: formData.landmark,
           pincode: formData.pincode,
