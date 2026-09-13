@@ -869,9 +869,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
             itemBuilder: (context, index) {
               final shopDoc = shops[index];
               final shop = shopDoc.data() as Map<String, dynamic>;
-              final shopName = shop['name'] ?? 'Shop';
+              final shopName = shop['name'] ?? shop['shopName'] ?? 'Shop';
               final shopId = shopDoc.id;
               final isSelected = _selectedShopId == shopId;
+              final shopProfileImg = (shop['profileImage'] ?? shop['imageUrl'] ?? shop['shopImage'] ?? '').toString().trim();
 
               return Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -890,6 +891,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       Container(
                         width: 75,
                         height: 75,
+                        clipBehavior: Clip.antiAlias,
                         decoration: BoxDecoration(
                           color: isSelected ? _lightBlue : Colors.white,
                           shape: BoxShape.circle,
@@ -898,7 +900,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   color: _lightBlue.withValues(alpha: 0.3),
                                   width: 4,
                                 )
-                              : null,
+                              : Border.all(
+                                  color: Colors.grey.shade200,
+                                  width: 1.5,
+                                ),
                           boxShadow: [
                             BoxShadow(
                               color: Colors.black.withValues(alpha: 0.05),
@@ -907,16 +912,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ),
                           ],
                         ),
-                        child: Center(
-                          child: Text(
-                            shopName.substring(0, 1).toUpperCase(),
-                            style: TextStyle(
-                              color: isSelected ? Colors.white : _lightBlue,
-                              fontSize: 32,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
+                        child: shopProfileImg.isNotEmpty
+                            ? CachedNetworkImage(
+                                imageUrl: shopProfileImg,
+                                fit: BoxFit.cover,
+                                placeholder: (context, url) => Center(
+                                  child: SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: _lightBlue),
+                                  ),
+                                ),
+                                errorWidget: (context, url, error) => Center(
+                                  child: Text(
+                                    shopName.isNotEmpty ? shopName.substring(0, 1).toUpperCase() : 'S',
+                                    style: TextStyle(
+                                      color: isSelected ? Colors.white : _lightBlue,
+                                      fontSize: 32,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              )
+                            : Center(
+                                child: Text(
+                                  shopName.isNotEmpty ? shopName.substring(0, 1).toUpperCase() : 'S',
+                                  style: TextStyle(
+                                    color: isSelected ? Colors.white : _lightBlue,
+                                    fontSize: 32,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
                       ),
                       const SizedBox(height: 8),
                       Text(

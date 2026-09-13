@@ -124,6 +124,41 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
+  Stream<List<QueryDocumentSnapshot>> _getNotificationsStream() {
+    final uid = user?.uid;
+    if (uid == null) return const Stream.empty();
+
+    return FirebaseFirestore.instance
+        .collection('shop_owners')
+        .doc(uid)
+        .collection('notifications')
+        .snapshots()
+        .asyncMap((shopSnap) async {
+      final List<QueryDocumentSnapshot> docs = List.from(shopSnap.docs);
+      try {
+        final deliverySnap = await FirebaseFirestore.instance
+            .collection('delivery_partners')
+            .doc(uid)
+            .collection('notifications')
+            .get();
+        docs.addAll(deliverySnap.docs);
+      } catch (e) {
+        debugPrint('Delivery notifications fetch notice: $e');
+      }
+      try {
+        final userSnap = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(uid)
+            .collection('notifications')
+            .get();
+        docs.addAll(userSnap.docs);
+      } catch (e) {
+        debugPrint('User notifications fetch notice: $e');
+      }
+      return docs;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     const navyBlue = Color(0xFF0A1628);
@@ -145,14 +180,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         ),
         actions: [
           if (user != null)
-            StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('users')
-                  .doc(user!.uid)
-                  .collection('notifications')
-                  .snapshots(),
+            StreamBuilder<List<QueryDocumentSnapshot>>(
+              stream: _getNotificationsStream(),
               builder: (context, snapshot) {
-                final docs = snapshot.data?.docs ?? [];
+                final docs = snapshot.data ?? [];
                 if (docs.isEmpty) return const SizedBox.shrink();
                 
                 return PopupMenuButton<String>(
@@ -194,12 +225,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       ),
       body: user == null
           ? const Center(child: Text('Please log in to view notifications'))
-          : StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('users')
-                  .doc(user!.uid)
-                  .collection('notifications')
-                  .snapshots(),
+          : StreamBuilder<List<QueryDocumentSnapshot>>(
+              stream: _getNotificationsStream(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator(color: primaryBlue));
@@ -214,7 +241,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   );
                 }
 
-                var docs = snapshot.data?.docs ?? [];
+                var docs = snapshot.data ?? [];
 
                 // Client side sorting by createdAt descending
                 docs = List<QueryDocumentSnapshot>.from(docs)..sort((a, b) {

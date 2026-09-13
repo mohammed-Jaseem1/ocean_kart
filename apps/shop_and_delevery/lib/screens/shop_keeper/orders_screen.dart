@@ -27,6 +27,34 @@ class _OrdersScreenState extends State<OrdersScreen> with AutomaticKeepAliveClie
 
       if (orderDoc.exists) {
         final data = orderDoc.data();
+        final String oldStatus = (data?['status'] ?? '').toString().toLowerCase();
+        final double orderTotal = (data?['totalAmount'] ?? data?['amount'] ?? 0.0).toDouble();
+        final String shopId = currentUser?.uid ?? data?['shopId'] ?? '';
+
+        // Update aggregated stats on shop_owners profile document
+        if (shopId.isNotEmpty && oldStatus != newStatus) {
+          try {
+            Map<String, dynamic> statUpdates = {};
+            if (oldStatus == 'pending') {
+              statUpdates['pendingOrders'] = FieldValue.increment(-1);
+            }
+            if (newStatus == 'completed' || newStatus == 'delivered') {
+              statUpdates['completedOrders'] = FieldValue.increment(1);
+              statUpdates['totalRevenue'] = FieldValue.increment(orderTotal);
+            } else if (newStatus == 'cancelled' || newStatus == 'rejected') {
+              statUpdates['rejectedOrders'] = FieldValue.increment(1);
+            }
+            if (statUpdates.isNotEmpty) {
+              await FirebaseFirestore.instance
+                  .collection('shop_owners')
+                  .doc(shopId)
+                  .set(statUpdates, SetOptions(merge: true));
+            }
+          } catch (e) {
+            debugPrint('Error updating shop owner order stats: $e');
+          }
+        }
+
         final String? customerId = data?['userId'];
         if (customerId != null && customerId.isNotEmpty) {
           final shortId = orderId.length > 8 ? orderId.substring(0, 8).toUpperCase() : orderId.toUpperCase();

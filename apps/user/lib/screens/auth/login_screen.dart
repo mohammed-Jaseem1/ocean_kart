@@ -572,19 +572,28 @@ class _LoginScreenState extends State<LoginScreen> {
                     
                     OutlinedButton.icon(
                       onPressed: _isLoading ? null : _signInWithGoogle,
-                      icon: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: const BoxDecoration(
-                          color: primaryBlue,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Text(
-                          'G', 
-                          style: TextStyle(
-                            color: Colors.white, 
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                          )
+                      icon: ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: Image.asset(
+                          'assets/google-logo.jpg',
+                          height: 22,
+                          width: 22,
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) => Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(
+                              color: primaryBlue,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Text(
+                              'G', 
+                              style: TextStyle(
+                                color: Colors.white, 
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                       label: const Text('Google', style: TextStyle(color: textColor, fontWeight: FontWeight.w600)),

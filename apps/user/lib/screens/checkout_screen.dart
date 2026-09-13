@@ -686,6 +686,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       final String shopId = _itemsToOrder.isNotEmpty ? (_itemsToOrder.first['shopId'] ?? '') : '';
       final String shortOrderId = orderId.length > 8 ? orderId.substring(0, 8).toUpperCase() : orderId.toUpperCase();
 
+      // Update shop owner aggregated stats to reduce reads
+      if (shopId.isNotEmpty) {
+        try {
+          await FirebaseFirestore.instance.collection('shop_owners').doc(shopId).set({
+            'totalOrders': FieldValue.increment(1),
+            'pendingOrders': FieldValue.increment(1),
+          }, SetOptions(merge: true));
+        } catch (e) {
+          debugPrint('Error incrementing shop owner order stats: $e');
+        }
+      }
+
       // Trigger Notification for Shop Owner
       if (shopId.isNotEmpty) {
         try {

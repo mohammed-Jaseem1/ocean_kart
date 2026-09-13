@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'profile_screen.dart';
 import 'shop_details_screen.dart';
 import 'assigned_stores_screen.dart';
+import '../common/notifications_screen.dart';
 
 class DeliveryPartnerDashboard extends StatefulWidget {
   const DeliveryPartnerDashboard({super.key});
@@ -84,89 +85,9 @@ class _DeliveryPartnerDashboardState extends State<DeliveryPartnerDashboard> {
   }
 
   void _showNotifications() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE2E8F0),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Notifications',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: _textDark,
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close, size: 20, color: _textMuted),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: _cardBorder),
-                  ),
-                  child: const Row(
-                    children: [
-                      Icon(Icons.check_circle_outline, color: Color(0xFF10B981), size: 22),
-                      SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Account Active',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13.5,
-                                color: _textDark,
-                              ),
-                            ),
-                            SizedBox(height: 2),
-                            Text(
-                              'You are ready to receive delivery orders.',
-                              style: TextStyle(fontSize: 12, color: _textMuted),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-              ],
-            ),
-          ),
-        );
-      },
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const NotificationsScreen()),
     );
   }
 

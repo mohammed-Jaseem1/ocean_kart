@@ -1,7 +1,34 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:image_cropper/image_cropper.dart';
+import 'package:image/image.dart' as img;
 import '../common/location_setup_screen.dart';
+import '../../widgets/cached_product_image.dart';
+
+Uint8List? _processProfileWebpInIsolate(Uint8List rawBytes) {
+  try {
+    final decodedImage = img.decodeImage(rawBytes);
+    if (decodedImage == null) return rawBytes;
+
+    img.Image resized = decodedImage;
+    if (decodedImage.width > 600 || decodedImage.height > 600) {
+      if (decodedImage.width >= decodedImage.height) {
+        resized = img.copyResize(decodedImage, width: 600);
+      } else {
+        resized = img.copyResize(decodedImage, height: 600);
+      }
+    }
+
+    final webpBytes = img.encodeWebP(resized);
+    return Uint8List.fromList(webpBytes);
+  } catch (e) {
+    return rawBytes;
+  }
+}
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -17,6 +44,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   static const Color _cardBorder = Color(0xFFE2E8F0);
 
   bool _isLoading = true;
+  bool _isUploadingImage = false;
   Map<String, dynamic> _userData = {};
 
   @override
@@ -54,6 +82,255 @@ class _ProfileScreenState extends State<ProfileScreen> {
         setState(() {
           _isLoading = false;
         });
+      }
+    }
+  }
+
+  Future<void> _showImagePickerOptions() async {
+    final hasImage = (_userData['profileImage'] ?? _userData['shopImage'] ?? _userData['imageUrl']) != null &&
+        (_userData['profileImage'] ?? _userData['shopImage'] ?? _userData['imageUrl']).toString().trim().isNotEmpty;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 20.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Store Profile Image',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: _darkNavy,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: _primaryCyan.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.photo_library_rounded, color: _primaryCyan),
+                  ),
+                  title: const Text('Choose from Gallery', style: TextStyle(fontWeight: FontWeight.w600)),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _pickAndUploadProfileImage(ImageSource.gallery);
+                  },
+                ),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.purple.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.camera_alt_rounded, color: Colors.purple),
+                  ),
+                  title: const Text('Take a Photo', style: TextStyle(fontWeight: FontWeight.w600)),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _pickAndUploadProfileImage(ImageSource.camera);
+                  },
+                ),
+                if (hasImage) ...[
+                  ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
+                    ),
+                    title: const Text('Remove Image', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w600)),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _removeProfileImage();
+                    },
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _pickAndUploadProfileImage(ImageSource source) async {
+    try {
+      final picker = ImagePicker();
+      final pickedFile = await picker.pickImage(
+        source: source,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 75,
+      );
+
+      if (pickedFile == null || !mounted) return;
+
+      final croppedFile = await ImageCropper().cropImage(
+        sourcePath: pickedFile.path,
+        maxWidth: 600,
+        maxHeight: 600,
+        compressQuality: 75,
+        aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
+        uiSettings: [
+          AndroidUiSettings(
+            toolbarTitle: 'Crop Store Profile Image',
+            toolbarColor: _darkNavy,
+            toolbarWidgetColor: Colors.white,
+            initAspectRatio: CropAspectRatioPreset.square,
+            lockAspectRatio: true,
+          ),
+          IOSUiSettings(
+            title: 'Crop Store Profile Image',
+            aspectRatioLockEnabled: true,
+            resetAspectRatioEnabled: false,
+            aspectRatioPickerButtonHidden: true,
+          ),
+        ],
+      );
+
+      if (croppedFile == null) return;
+
+      setState(() {
+        _isUploadingImage = true;
+      });
+
+      final bytes = await croppedFile.readAsBytes();
+      final webpBytes = await compute(_processProfileWebpInIsolate, bytes);
+
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception('User not logged in');
+
+      // Upload to Firebase Storage bucket
+      final storageRef = FirebaseFirestore.instance.app.options.storageBucket != null &&
+              FirebaseFirestore.instance.app.options.storageBucket!.isNotEmpty
+          ? FirebaseStorage.instanceFor(bucket: 'gs://${FirebaseFirestore.instance.app.options.storageBucket}')
+              .ref()
+              .child('shop_profiles/${user.uid}.webp')
+          : FirebaseStorage.instance.ref().child('shop_profiles/${user.uid}.webp');
+
+      final uploadTask = await storageRef.putData(
+        webpBytes ?? bytes,
+        SettableMetadata(contentType: 'image/webp'),
+      );
+
+      final downloadUrl = await uploadTask.ref.getDownloadURL();
+
+      await FirebaseFirestore.instance.collection('shop_owners').doc(user.uid).set({
+        'profileImage': downloadUrl,
+        'shopImage': FieldValue.delete(),
+        'imageUrl': FieldValue.delete(),
+      }, SetOptions(merge: true));
+
+      try {
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'profileImage': downloadUrl,
+          'shopImage': FieldValue.delete(),
+          'imageUrl': FieldValue.delete(),
+        }, SetOptions(merge: true));
+      } catch (e) {
+        debugPrint('Sync user document profileImage error: $e');
+      }
+
+      if (mounted) {
+        setState(() {
+          _userData['profileImage'] = downloadUrl;
+          _userData.remove('shopImage');
+          _userData.remove('imageUrl');
+          _isUploadingImage = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Store profile image updated successfully!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isUploadingImage = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update image: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  Future<void> _removeProfileImage() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    setState(() {
+      _isUploadingImage = true;
+    });
+
+    try {
+      await FirebaseFirestore.instance.collection('shop_owners').doc(user.uid).set({
+        'profileImage': FieldValue.delete(),
+        'shopImage': FieldValue.delete(),
+        'imageUrl': FieldValue.delete(),
+      }, SetOptions(merge: true));
+
+      try {
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'profileImage': FieldValue.delete(),
+          'shopImage': FieldValue.delete(),
+          'imageUrl': FieldValue.delete(),
+        }, SetOptions(merge: true));
+      } catch (e) {
+        debugPrint('Sync remove user profile image error: $e');
+      }
+
+      if (mounted) {
+        setState(() {
+          _userData.remove('profileImage');
+          _userData.remove('shopImage');
+          _userData.remove('imageUrl');
+          _isUploadingImage = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Store profile image removed'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isUploadingImage = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to remove image: $e'), backgroundColor: Colors.red),
+        );
       }
     }
   }
@@ -149,18 +426,61 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       child: Row(
                         children: [
-                          Container(
-                            width: 60,
-                            height: 60,
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [Color(0xFF0F172A), Color(0xFF0077B6)],
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              ),
-                              borderRadius: BorderRadius.circular(16),
+                          GestureDetector(
+                            onTap: _isUploadingImage ? null : () => _pickAndUploadProfileImage(ImageSource.gallery),
+                            onLongPress: _isUploadingImage ? null : _showImagePickerOptions,
+                            child: Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                Container(
+                                  width: 68,
+                                  height: 68,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(color: _primaryCyan.withValues(alpha: 0.3), width: 1.5),
+                                  ),
+                                  child: _isUploadingImage
+                                      ? const Center(
+                                          child: SizedBox(
+                                            width: 24,
+                                            height: 24,
+                                            child: CircularProgressIndicator(strokeWidth: 2.5, color: _primaryCyan),
+                                          ),
+                                        )
+                                      : CachedProductImage(
+                                          imageSource: _userData['profileImage'] ?? _userData['shopImage'] ?? _userData['imageUrl'],
+                                          width: 68,
+                                          height: 68,
+                                          borderRadius: BorderRadius.circular(18),
+                                          defaultIcon: Icons.storefront_rounded,
+                                        ),
+                                ),
+                                Positioned(
+                                  right: -4,
+                                  bottom: -4,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(5),
+                                    decoration: BoxDecoration(
+                                      color: _darkNavy,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(color: Colors.white, width: 2),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withValues(alpha: 0.15),
+                                          blurRadius: 4,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ],
+                                    ),
+                                    child: const Icon(
+                                      Icons.camera_alt_rounded,
+                                      size: 13,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
-                            child: const Icon(Icons.storefront_rounded, size: 30, color: Colors.white),
                           ),
                           const SizedBox(width: 16),
                           Expanded(

@@ -19,12 +19,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final User? currentUser = FirebaseAuth.instance.currentUser;
   
   int todayOrders = 0;
-  int pendingOrders = 0;
-  int completedOrders = 0;
-  double totalRevenue = 0.0;
+  int todayPendingOrders = 0;
+  int todayCompletedOrders = 0;
+  int todayRejectedOrders = 0;
+  double todayRevenue = 0.0;
+
+  int allTimeOrders = 0;
+  int allTimePendingOrders = 0;
+  int allTimeCompletedOrders = 0;
+  int allTimeRejectedOrders = 0;
+  double allTimeRevenue = 0.0;
+
+  String _selectedTimeFilter = 'Today';
   bool isLoading = true;
 
-  String _shopName = 'My Store';
+  int get pendingOrders => _selectedTimeFilter == 'Today' ? todayPendingOrders : allTimePendingOrders;
+  int get completedOrders => _selectedTimeFilter == 'Today' ? todayCompletedOrders : allTimeCompletedOrders;
+  int get rejectedOrders => _selectedTimeFilter == 'Today' ? todayRejectedOrders : allTimeRejectedOrders;
+  double get totalRevenue => _selectedTimeFilter == 'Today' ? todayRevenue : allTimeRevenue;
 
   @override
   void initState() {
@@ -38,68 +50,122 @@ class _DashboardScreenState extends State<DashboardScreen> {
     try {
       final now = DateTime.now();
       final startOfDay = DateTime(now.year, now.month, now.day);
+
+      // Check for cached/aggregated stats on shop_owners profile document to reduce reads
+      final shopDoc = await FirebaseFirestore.instance
+          .collection('shop_owners')
+          .doc(currentUser!.uid)
+          .get();
+
+      bool hasAggregatedStats = false;
+      int aggAllTimeCount = 0;
+      int aggAllTimePending = 0;
+      int aggAllTimeCompleted = 0;
+      int aggAllTimeRejected = 0;
+      double aggAllTimeRev = 0.0;
+
+      if (shopDoc.exists) {
+        final sData = shopDoc.data() ?? {};
+        if (sData.containsKey('totalOrders')) {
+          hasAggregatedStats = true;
+          aggAllTimeCount = (sData['totalOrders'] as num?)?.toInt() ?? 0;
+          aggAllTimePending = (sData['pendingOrders'] as num?)?.toInt() ?? 0;
+          aggAllTimeCompleted = (sData['completedOrders'] as num?)?.toInt() ?? 0;
+          aggAllTimeRejected = (sData['rejectedOrders'] as num?)?.toInt() ?? 0;
+          aggAllTimeRev = (sData['totalRevenue'] as num?)?.toDouble() ?? 0.0;
+        }
+      }
       
       final querySnapshot = await FirebaseFirestore.instance
           .collection('orders')
           .where('shopId', isEqualTo: currentUser!.uid)
           .get();
           
-      int today = 0;
-      int pending = 0;
-      int completed = 0;
-      double revenue = 0.0;
+      int todayCount = 0;
+      int todayPending = 0;
+      int todayCompleted = 0;
+      int todayRejected = 0;
+      double todayRev = 0.0;
+
+      int calcAllTimeCount = 0;
+      int calcAllTimePending = 0;
+      int calcAllTimeCompleted = 0;
+      int calcAllTimeRejected = 0;
+      double calcAllTimeRev = 0.0;
       
       for (var doc in querySnapshot.docs) {
         final data = doc.data();
         final status = (data['status'] ?? '').toString().toLowerCase();
+        final amount = (data['totalAmount'] ?? data['amount'] ?? 0.0).toDouble();
         
+        bool isToday = false;
         if (data['createdAt'] != null && data['createdAt'] is Timestamp) {
            final Timestamp ts = data['createdAt'];
            final date = ts.toDate();
            if (date.isAfter(startOfDay)) {
-             today++;
+             isToday = true;
            }
         } else {
-           today++; 
+           isToday = true; 
         }
 
+        calcAllTimeCount++;
         if (status == 'pending') {
-          pending++;
+          calcAllTimePending++;
         } else if (status == 'completed' || status == 'delivered') {
-          completed++;
-          revenue += (data['totalAmount'] ?? data['amount'] ?? 0.0).toDouble();
+          calcAllTimeCompleted++;
+          calcAllTimeRev += amount;
+        } else if (status == 'cancelled' || status == 'rejected') {
+          calcAllTimeRejected++;
+        }
+
+        if (isToday) {
+          todayCount++;
+          if (status == 'pending') {
+            todayPending++;
+          } else if (status == 'completed' || status == 'delivered') {
+            todayCompleted++;
+            todayRev += amount;
+          } else if (status == 'cancelled' || status == 'rejected') {
+            todayRejected++;
+          }
         }
       }
 
-      // Also fetch shop details
-      final userDoc = await FirebaseFirestore.instance
-          .collection('shop_owners')
-          .doc(currentUser!.uid)
-          .get();
-      
-      String shopName = 'My Store';
+      final finalAllTimeCount = hasAggregatedStats ? aggAllTimeCount : calcAllTimeCount;
+      final finalAllTimePending = hasAggregatedStats ? aggAllTimePending : calcAllTimePending;
+      final finalAllTimeCompleted = hasAggregatedStats ? aggAllTimeCompleted : calcAllTimeCompleted;
+      final finalAllTimeRejected = hasAggregatedStats ? aggAllTimeRejected : calcAllTimeRejected;
+      final finalAllTimeRev = hasAggregatedStats ? aggAllTimeRev : calcAllTimeRev;
 
-      if (userDoc.exists) {
-        final uData = userDoc.data() as Map<String, dynamic>;
-        shopName = uData['shopName'] ?? uData['name'] ?? 'My Store';
-      } else {
-        final legacyDoc = await FirebaseFirestore.instance
-            .collection('users')
+      // Seed stats to shop_owners profile if not already seeded
+      if (!hasAggregatedStats) {
+        await FirebaseFirestore.instance
+            .collection('shop_owners')
             .doc(currentUser!.uid)
-            .get();
-        if (legacyDoc.exists) {
-          final uData = legacyDoc.data() as Map<String, dynamic>;
-          shopName = uData['shopName'] ?? uData['name'] ?? 'My Store';
-        }
+            .set({
+          'totalOrders': calcAllTimeCount,
+          'pendingOrders': calcAllTimePending,
+          'completedOrders': calcAllTimeCompleted,
+          'rejectedOrders': calcAllTimeRejected,
+          'totalRevenue': calcAllTimeRev,
+        }, SetOptions(merge: true));
       }
 
       if (mounted) {
         setState(() {
-          todayOrders = today;
-          pendingOrders = pending;
-          completedOrders = completed;
-          totalRevenue = revenue;
-          _shopName = shopName;
+          todayOrders = todayCount;
+          todayPendingOrders = todayPending;
+          todayCompletedOrders = todayCompleted;
+          todayRejectedOrders = todayRejected;
+          todayRevenue = todayRev;
+
+          allTimeOrders = finalAllTimeCount;
+          allTimePendingOrders = finalAllTimePending;
+          allTimeCompletedOrders = finalAllTimeCompleted;
+          allTimeRejectedOrders = finalAllTimeRejected;
+          allTimeRevenue = finalAllTimeRev;
+
           isLoading = false;
         });
       }
@@ -326,62 +392,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Modern Clean Header
-            Container(
-              padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Color(0xFF0F172A), Color(0xFF0A2540)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(28),
-                  bottomRight: Radius.circular(28),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Color(0x200F172A),
-                    offset: Offset(0, 8),
-                    blurRadius: 16,
-                  )
-                ],
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Welcome back,',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.white.withValues(alpha: 0.75),
-                            letterSpacing: 0.2,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _shopName,
-                          style: const TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                            letterSpacing: -0.3,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
 
             // Statistics Section
             Padding(
@@ -389,70 +400,127 @@ class _DashboardScreenState extends State<DashboardScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Overview',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF0F172A),
-                          letterSpacing: -0.2,
+                  (() {
+                    final int displayOrders = _selectedTimeFilter == 'Today' ? todayOrders : allTimeOrders;
+                    final int displayPending = _selectedTimeFilter == 'Today' ? todayPendingOrders : allTimePendingOrders;
+                    final int displayCompleted = _selectedTimeFilter == 'Today' ? todayCompletedOrders : allTimeCompletedOrders;
+                    final int displayRejected = _selectedTimeFilter == 'Today' ? todayRejectedOrders : allTimeRejectedOrders;
+                    final double displayRevenue = _selectedTimeFilter == 'Today' ? todayRevenue : allTimeRevenue;
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'Overview',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF0F172A),
+                                letterSpacing: -0.2,
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: const Color(0xFFE2E8F0)),
+                              ),
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<String>(
+                                  value: _selectedTimeFilter,
+                                  isDense: true,
+                                  icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: Color(0xFF64748B)),
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF0F172A),
+                                  ),
+                                  onChanged: (String? newValue) {
+                                    if (newValue != null) {
+                                      setState(() {
+                                        _selectedTimeFilter = newValue;
+                                      });
+                                    }
+                                  },
+                                  items: <String>['Today', 'All Time'].map<DropdownMenuItem<String>>((String value) {
+                                    return DropdownMenuItem<String>(
+                                      value: value,
+                                      child: Text(value),
+                                    );
+                                  }).toList(),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                      Text(
-                        'Today',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.grey.shade500,
+                        const SizedBox(height: 14),
+                        
+                        // Row 1: 3 Stat Cards (Orders, Pending, Completed)
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildCompactStatCard(
+                                title: 'Orders',
+                                value: isLoading ? '...' : displayOrders.toString(),
+                                icon: Icons.shopping_bag_rounded,
+                                color: lightBlue,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _buildCompactStatCard(
+                                title: 'Pending',
+                                value: isLoading ? '...' : displayPending.toString(),
+                                icon: Icons.pending_actions_rounded,
+                                color: const Color(0xFFFF9F43),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _buildCompactStatCard(
+                                title: 'Completed',
+                                value: isLoading ? '...' : displayCompleted.toString(),
+                                icon: Icons.check_circle_rounded,
+                                color: const Color(0xFF10B981),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  
-                  // 4 Compact Stats in One Line
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildCompactStatCard(
-                          title: 'Orders',
-                          value: isLoading ? '...' : todayOrders.toString(),
-                          icon: Icons.shopping_bag_rounded,
-                          color: lightBlue,
+                        const SizedBox(height: 8),
+
+                        // Row 2: 3 Stat Cards (Rejected, Revenue, Spacer)
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildCompactStatCard(
+                                title: 'Rejected',
+                                value: isLoading ? '...' : displayRejected.toString(),
+                                icon: Icons.cancel_rounded,
+                                color: const Color(0xFFEF4444),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _buildCompactStatCard(
+                                title: 'Revenue',
+                                value: isLoading ? '...' : '₹${displayRevenue.toStringAsFixed(0)}',
+                                icon: Icons.account_balance_wallet_rounded,
+                                color: const Color(0xFF00B4D8),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            const Expanded(
+                              child: SizedBox(),
+                            ),
+                          ],
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _buildCompactStatCard(
-                          title: 'Pending',
-                          value: isLoading ? '...' : pendingOrders.toString(),
-                          icon: Icons.pending_actions_rounded,
-                          color: const Color(0xFFFF9F43),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _buildCompactStatCard(
-                          title: 'Completed',
-                          value: isLoading ? '...' : completedOrders.toString(),
-                          icon: Icons.check_circle_rounded,
-                          color: const Color(0xFF10B981),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _buildCompactStatCard(
-                          title: 'Revenue',
-                          value: isLoading ? '...' : '₹${totalRevenue.toStringAsFixed(0)}',
-                          icon: Icons.account_balance_wallet_rounded,
-                          color: const Color(0xFF00B4D8),
-                        ),
-                      ),
-                    ],
-                  ),
+                      ],
+                    );
+                  })(),
 
                   const SizedBox(height: 24),
 

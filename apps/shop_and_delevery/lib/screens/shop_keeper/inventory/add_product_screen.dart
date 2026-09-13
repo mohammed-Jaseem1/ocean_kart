@@ -1,31 +1,31 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
-import 'dart:convert';
 import '../../../widgets/cached_product_image.dart';
 
-String? _processWebpInIsolate(Uint8List rawBytes) {
+Uint8List? _processWebpInIsolate(Uint8List rawBytes) {
   try {
     final decodedImage = img.decodeImage(rawBytes);
-    if (decodedImage == null) return null;
+    if (decodedImage == null) return rawBytes;
 
     img.Image resized = decodedImage;
-    if (decodedImage.width > 600 || decodedImage.height > 600) {
+    if (decodedImage.width > 800 || decodedImage.height > 800) {
       if (decodedImage.width >= decodedImage.height) {
-        resized = img.copyResize(decodedImage, width: 600);
+        resized = img.copyResize(decodedImage, width: 800);
       } else {
-        resized = img.copyResize(decodedImage, height: 600);
+        resized = img.copyResize(decodedImage, height: 800);
       }
     }
 
     final webpBytes = img.encodeWebP(resized);
-    return 'data:image/webp;base64,${base64Encode(webpBytes)}';
+    return Uint8List.fromList(webpBytes);
   } catch (e) {
-    return 'data:image/jpeg;base64,${base64Encode(rawBytes)}';
+    return rawBytes;
   }
 }
 
@@ -133,15 +133,6 @@ class _AddProductScreenState extends State<AddProductScreen> {
     super.dispose();
   }
 
-  Future<String?> _compressAndEncodeToWebp(Uint8List rawBytes) async {
-    try {
-      return await compute(_processWebpInIsolate, rawBytes);
-    } catch (e) {
-      debugPrint('WebP encoding failed: $e');
-      return 'data:image/jpeg;base64,${base64Encode(rawBytes)}';
-    }
-  }
-
   void _pickAndUploadImage() async {
     if (_productImages.length >= 4) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -197,16 +188,34 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
     try {
       final bytes = await croppedFile.readAsBytes();
-      final webpDataUrl = await _compressAndEncodeToWebp(bytes);
+      final webpBytes = await compute(_processWebpInIsolate, bytes);
 
-      if (webpDataUrl != null && mounted) {
+      final user = FirebaseAuth.instance.currentUser;
+      final shopId = user?.uid ?? 'guest';
+      final fileName = '${DateTime.now().millisecondsSinceEpoch}_${_productImages.length}.webp';
+
+      final storageRef = FirebaseFirestore.instance.app.options.storageBucket != null &&
+              FirebaseFirestore.instance.app.options.storageBucket!.isNotEmpty
+          ? FirebaseStorage.instanceFor(bucket: 'gs://${FirebaseFirestore.instance.app.options.storageBucket}')
+              .ref()
+              .child('products/$shopId/$fileName')
+          : FirebaseStorage.instance.ref().child('products/$shopId/$fileName');
+
+      final uploadTask = await storageRef.putData(
+        webpBytes ?? bytes,
+        SettableMetadata(contentType: 'image/webp'),
+      );
+
+      final downloadUrl = await uploadTask.ref.getDownloadURL();
+
+      if (mounted) {
         setState(() {
-          _productImages.add(webpDataUrl);
+          _productImages.add(downloadUrl);
           _isLoading = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Image added! (${_productImages.length}/4)'),
+            content: Text('Image uploaded! (${_productImages.length}/4)'),
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 2),
           ),
