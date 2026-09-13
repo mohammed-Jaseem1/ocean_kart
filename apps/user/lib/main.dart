@@ -139,10 +139,6 @@ class _AuthGateState extends State<AuthGate> {
         if (snapshot.hasData) {
           final user = snapshot.data!;
 
-          if (!user.emailVerified) {
-            return const LoginScreen();
-          }
-
           return StreamBuilder<DocumentSnapshot>(
             stream: FirebaseFirestore.instance
                 .collection('users')

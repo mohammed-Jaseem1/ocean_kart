@@ -131,14 +131,7 @@ class _SelectShopsScreenState extends State<SelectShopsScreen> {
           .doc(currentUser!.uid)
           .set(updateData, SetOptions(merge: true));
 
-      try {
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(currentUser!.uid)
-            .set(updateData, SetOptions(merge: true));
-      } catch (e) {
-        debugPrint('Legacy user sync for shop selection skipped: $e');
-      }
+      // Updated in delivery_partners collection
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

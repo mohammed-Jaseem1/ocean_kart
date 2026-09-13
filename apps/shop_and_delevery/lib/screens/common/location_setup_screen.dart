@@ -247,15 +247,6 @@ class _LocationSetupScreenState extends State<LocationSetupScreen> with SingleTi
           .doc(user.uid)
           .set(updatePayload, SetOptions(merge: true));
 
-      try {
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .set(updatePayload, SetOptions(merge: true));
-      } catch (e) {
-        debugPrint('Legacy user collection sync skipped or failed: $e');
-      }
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(

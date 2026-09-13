@@ -41,19 +41,7 @@ class _InventoryHomeScreenState extends State<InventoryHomeScreen> with Automati
             'isAvailable': !currentlyActive,
           });
 
-      try {
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(currentUser.uid)
-            .collection('products')
-            .doc(productId)
-            .update({
-              'status': newStatus,
-              'isAvailable': !currentlyActive,
-            });
-      } catch (e) {
-        debugPrint('Legacy user product status update skipped: $e');
-      }
+      // Updated in shop_owners collection
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -106,16 +94,7 @@ class _InventoryHomeScreenState extends State<InventoryHomeScreen> with Automati
             .doc(productId)
             .delete();
 
-        try {
-          await FirebaseFirestore.instance
-              .collection('users')
-              .doc(user!.uid)
-              .collection('products')
-              .doc(productId)
-              .delete();
-        } catch (e) {
-          debugPrint('Legacy user product delete skipped: $e');
-        }
+        // Deleted from shop_owners collection
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(

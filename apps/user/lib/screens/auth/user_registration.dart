@@ -454,20 +454,23 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
       final User? user = userCredential.user;
       final String uid = user!.uid;
 
-      // Step 2: Link verified phone number to Firebase Auth (shows as provider)
+      // Step 2: Link verified phone number to Firebase Auth
       try {
-        final linkFn = FirebaseFunctions.instanceFor(region: 'us-central1')
-            .httpsCallable('linkPhoneNumber');
+        await user.getIdToken(true);
+        final linkFn = FirebaseFunctions.instance.httpsCallable('linkPhoneNumber');
         await linkFn.call({'uid': uid, 'mobileNumber': rawPhone});
       } catch (e) {
-        // Non-fatal: phone linking failure should not block registration
         debugPrint('linkPhoneNumber warning: $e');
       }
 
-      // Step 3: Send Email Verification link
-      await user.sendEmailVerification();
+      // Step 3: Send Email Verification link in background (optional)
+      try {
+        await user.sendEmailVerification();
+      } catch (e) {
+        debugPrint('sendEmailVerification non-fatal error: $e');
+      }
 
-      // Step 3: Save user data to Firestore
+      // Step 4: Save active user data to Firestore
       await FirebaseFirestore.instance.collection('users').doc(uid).set({
         'uid': uid,
         'role': 'customer',
@@ -477,20 +480,19 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
         'address': _addressController.text.trim(),
         'photoUrl': _profileImageUrl ?? '',
         'phoneVerified': true,
-        'emailVerified': false,
+        'emailVerified': user.emailVerified,
         'createdAt': FieldValue.serverTimestamp(),
-        'status': 'pending_email_verification',
+        'status': 'active',
       });
 
-      // Keep user signed in and show the polling verification dialog
       if (mounted) {
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (BuildContext context) {
-            return const EmailVerificationDialog();
-          },
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Registration successful! Welcome to OceanKart.'),
+            backgroundColor: Colors.green,
+          ),
         );
+        Navigator.of(context).popUntil((route) => route.isFirst);
       }
     } on FirebaseAuthException catch (e) {
       String errorMessage = 'An error occurred during registration.';

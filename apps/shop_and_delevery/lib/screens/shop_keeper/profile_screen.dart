@@ -244,16 +244,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         'imageUrl': FieldValue.delete(),
       }, SetOptions(merge: true));
 
-      try {
-        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-          'profileImage': downloadUrl,
-          'shopImage': FieldValue.delete(),
-          'imageUrl': FieldValue.delete(),
-        }, SetOptions(merge: true));
-      } catch (e) {
-        debugPrint('Sync user document profileImage error: $e');
-      }
-
       if (mounted) {
         setState(() {
           _userData['profileImage'] = downloadUrl;
@@ -297,16 +287,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         'imageUrl': FieldValue.delete(),
       }, SetOptions(merge: true));
 
-      try {
-        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-          'profileImage': FieldValue.delete(),
-          'shopImage': FieldValue.delete(),
-          'imageUrl': FieldValue.delete(),
-        }, SetOptions(merge: true));
-      } catch (e) {
-        debugPrint('Sync remove user profile image error: $e');
-      }
-
       if (mounted) {
         setState(() {
           _userData.remove('profileImage');
@@ -344,14 +324,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       await FirebaseFirestore.instance.collection('shop_owners').doc(user.uid).set({
         'isStoreOpen': newStatus,
       }, SetOptions(merge: true));
-
-      try {
-        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-          'isStoreOpen': newStatus,
-        }, SetOptions(merge: true));
-      } catch (e) {
-        debugPrint('Legacy user store open sync skipped: $e');
-      }
       setState(() {
         _userData['isStoreOpen'] = newStatus;
       });

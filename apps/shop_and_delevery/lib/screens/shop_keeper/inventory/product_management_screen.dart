@@ -45,16 +45,7 @@ class _ProductManagementScreenState extends State<ProductManagementScreen> {
             .doc(productId)
             .delete();
 
-        try {
-          await FirebaseFirestore.instance
-              .collection('users')
-              .doc(user!.uid)
-              .collection('products')
-              .doc(productId)
-              .delete();
-        } catch (e) {
-          debugPrint('Legacy user product deletion skipped: $e');
-        }
+        // Deleted from shop_owners collection
             
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(

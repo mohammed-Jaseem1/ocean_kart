@@ -42,7 +42,7 @@ class _AddStockScreenState extends State<AddStockScreen> {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
         final querySnapshot = await FirebaseFirestore.instance
-            .collection('users')
+            .collection('shop_owners')
             .doc(user.uid)
             .collection('products')
             .get();
@@ -163,7 +163,7 @@ class _AddStockScreenState extends State<AddStockScreen> {
 
       // 1. Add to stocks collection
       await FirebaseFirestore.instance
-          .collection('users')
+          .collection('shop_owners')
           .doc(user.uid)
           .collection('stocks')
           .add({
@@ -178,7 +178,7 @@ class _AddStockScreenState extends State<AddStockScreen> {
 
       // 2. Update the product's current stock and sale price
       await FirebaseFirestore.instance
-          .collection('users')
+          .collection('shop_owners')
           .doc(user.uid)
           .collection('products')
           .doc(_selectedProductId)
@@ -245,7 +245,7 @@ class _AddStockScreenState extends State<AddStockScreen> {
       if (user != null) {
         try {
           await FirebaseFirestore.instance
-              .collection('users')
+              .collection('shop_owners')
               .doc(user.uid)
               .collection('products')
               .doc(_selectedProductId)

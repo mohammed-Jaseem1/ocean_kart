@@ -116,7 +116,7 @@ class _AssignedStoresScreenState extends State<AssignedStoresScreen> {
         ],
       ),
       body: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance.collection('users').doc(currentUser!.uid).snapshots(),
+        stream: FirebaseFirestore.instance.collection('delivery_partners').doc(currentUser!.uid).snapshots(),
         builder: (context, userSnapshot) {
           if (userSnapshot.connectionState == ConnectionState.waiting && _isLoadingShops) {
             return const Center(
