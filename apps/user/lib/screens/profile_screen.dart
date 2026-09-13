@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'edit_profile_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -34,10 +35,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
       try {
         final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
         if (doc.exists && mounted) {
+          final data = doc.data();
           setState(() {
-            userData = doc.data();
+            userData = data;
             _isLoading = false;
           });
+
+          // Sync phone number to Firebase Auth if not already attached
+          if (user.phoneNumber == null || user.phoneNumber!.isEmpty) {
+            final phone = data?['mobileNumber'];
+            if (phone != null && phone.toString().trim().isNotEmpty) {
+              try {
+                final linkFn = FirebaseFunctions.instanceFor(region: 'us-central1').httpsCallable('linkPhoneNumber');
+                await linkFn.call({'uid': user.uid, 'mobileNumber': phone.toString().trim()});
+                await user.reload();
+              } catch (linkErr) {
+                debugPrint('Profile auto-sync phone warning: $linkErr');
+              }
+            }
+          }
         } else if (mounted) {
           setState(() => _isLoading = false);
         }
@@ -131,9 +147,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final name = userData?['name'] ?? 'User Name';
     
     String getPhone() {
-      if (userData != null) {
-        if (userData!['phone'] != null && userData!['phone'].toString().trim().isNotEmpty) return userData!['phone'];
-        if (userData!['mobileNumber'] != null && userData!['mobileNumber'].toString().trim().isNotEmpty) return userData!['mobileNumber'];
+      if (userData != null && userData!['mobileNumber'] != null && userData!['mobileNumber'].toString().trim().isNotEmpty) {
+        return userData!['mobileNumber'];
       }
       final authPhone = FirebaseAuth.instance.currentUser?.phoneNumber;
       if (authPhone != null && authPhone.trim().isNotEmpty) return authPhone;

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 class EditProfileScreen extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -28,7 +29,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _nameController = TextEditingController(text: widget.userData['name'] ?? '');
     
     String getPhone() {
-      if (widget.userData['phone'] != null && widget.userData['phone'].toString().trim().isNotEmpty) return widget.userData['phone'];
       if (widget.userData['mobileNumber'] != null && widget.userData['mobileNumber'].toString().trim().isNotEmpty) return widget.userData['mobileNumber'];
       final authPhone = FirebaseAuth.instance.currentUser?.phoneNumber;
       if (authPhone != null && authPhone.trim().isNotEmpty) return authPhone;
@@ -52,10 +52,21 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
+        final rawPhone = _phoneController.text.trim();
         await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
           'name': _nameController.text.trim(),
-          'phone': _phoneController.text.trim(),
+          'mobileNumber': rawPhone,
         }, SetOptions(merge: true));
+
+        // Sync to Firebase Auth via linkPhoneNumber callable
+        if (rawPhone.isNotEmpty) {
+          try {
+            final linkFn = FirebaseFunctions.instanceFor(region: 'us-central1').httpsCallable('linkPhoneNumber');
+            await linkFn.call({'uid': user.uid, 'mobileNumber': rawPhone});
+          } catch (linkErr) {
+            debugPrint('Error linking phone in auth during profile edit: $linkErr');
+          }
+        }
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(

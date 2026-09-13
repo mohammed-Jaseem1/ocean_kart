@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_sign_in/google_sign_in.dart';
 import 'user_registration.dart';
@@ -81,15 +82,15 @@ class _LoginScreenState extends State<LoginScreen> {
         await user.reload();
         await user.getIdToken(true);
         final freshUser = FirebaseAuth.instance.currentUser;
-        if (freshUser == null) {
+        if (freshUser == null || !freshUser.emailVerified) {
           await FirebaseAuth.instance.signOut();
           setState(() {
-            _errorMessage = 'Failed to load user profile. Please try again.';
+            _errorMessage = 'Your email is not verified yet. Please check your inbox and click the verification link to log in with email & password.';
           });
           return;
         }
 
-        // Sync emailVerified & status to Firestore if not already updated
+        // Sync emailVerified & status to Firestore if verified
         final docRef = FirebaseFirestore.instance.collection('users').doc(freshUser.uid);
         final docSnapshot = await docRef.get();
 
@@ -100,6 +101,19 @@ class _LoginScreenState extends State<LoginScreen> {
               'emailVerified': true,
               'status': 'active',
             });
+          }
+
+          // Auto-sync phone number to Firebase Auth if not already set
+          if (freshUser.phoneNumber == null || freshUser.phoneNumber!.isEmpty) {
+            final phone = data['mobileNumber'];
+            if (phone != null && phone.toString().trim().isNotEmpty) {
+              try {
+                final linkFn = FirebaseFunctions.instanceFor(region: 'us-central1').httpsCallable('linkPhoneNumber');
+                await linkFn.call({'uid': freshUser.uid, 'mobileNumber': phone.toString().trim()});
+              } catch (e) {
+                debugPrint('Auto linkPhoneNumber on login non-fatal warning: $e');
+              }
+            }
           }
         }
       }
@@ -162,62 +176,29 @@ class _LoginScreenState extends State<LoginScreen> {
         } else {
           final data = doc.data() as Map<String, dynamic>;
           
-          if (data['emailVerified'] == true || data['status'] == 'active') {
-            // Scenario B: Existing VERIFIED user
-            // Firebase Auth automatically linked the Google identity if they have the same email.
-            // We just let them log in.
+          if (data['emailVerified'] == true || user.emailVerified) {
+            // Existing VERIFIED user - allow login
           } else {
-            // Scenario C: Existing UNVERIFIED user (Security Risk)
-            // Immediately sign them out to block the session
+            // Existing UNVERIFIED user: Sign out and redirect to registration page
             await FirebaseAuth.instance.signOut();
             await GoogleSignIn.instance.signOut();
-            
+
             if (mounted) {
               setState(() {
                 _isLoading = false;
               });
-              
-              showDialog(
-                context: context,
-                barrierDismissible: false,
-                builder: (context) => AlertDialog(
-                  title: const Text('Account Verification Required'),
-                  content: const Text(
-                      'An account with this email already exists but is not verified. '
-                      'To link your Google account securely, please verify your identity first.'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Back'),
-                    ),
-                    ElevatedButton(
-                      onPressed: () async {
-                        try {
-                          await user.sendEmailVerification();
-                          if (context.mounted) {
-                            Navigator.pop(context);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Verification link sent! Please check your inbox.'),
-                                backgroundColor: Colors.green,
-                              ),
-                            );
-                          }
-                        } catch (e) {
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Failed to send verification email: $e'),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
-                          }
-                        }
-                      },
-                      child: const Text('Send Verification Email'),
-                    ),
-                  ],
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Your email is not verified yet. Redirecting to registration to verify phone & account...'),
+                  backgroundColor: Colors.orange,
+                  duration: Duration(seconds: 4),
                 ),
+              );
+
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const UserRegistrationPage()),
               );
             }
             return; // Stop execution
@@ -256,7 +237,9 @@ class _LoginScreenState extends State<LoginScreen> {
           e.code == GoogleSignInExceptionCode.interrupted) {
         throw Exception('Google Sign-In was cancelled.');
       }
-      rethrow;
+      throw Exception('Google Sign-In error (${e.code}): $e');
+    } catch (e) {
+      throw Exception('Google Sign-In error: $e');
     }
 
     final GoogleSignInAuthentication googleAuth = googleUser.authentication;

@@ -457,7 +457,7 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
       // Step 2: Link verified phone number to Firebase Auth
       try {
         await user.getIdToken(true);
-        final linkFn = FirebaseFunctions.instance.httpsCallable('linkPhoneNumber');
+        final linkFn = FirebaseFunctions.instanceFor(region: 'us-central1').httpsCallable('linkPhoneNumber');
         await linkFn.call({'uid': uid, 'mobileNumber': rawPhone});
       } catch (e) {
         debugPrint('linkPhoneNumber warning: $e');
@@ -486,13 +486,11 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
       });
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Registration successful! Welcome to OceanKart.'),
-            backgroundColor: Colors.green,
-          ),
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => EmailSentSkipDialog(email: email),
         );
-        Navigator.of(context).popUntil((route) => route.isFirst);
       }
     } on FirebaseAuthException catch (e) {
       String errorMessage = 'An error occurred during registration.';
@@ -1000,6 +998,88 @@ class _EmailVerificationDialogState extends State<EmailVerificationDialog> {
                 ),
               ),
             ]
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class EmailSentSkipDialog extends StatelessWidget {
+  final String email;
+  const EmailSentSkipDialog({super.key, required this.email});
+
+  @override
+  Widget build(BuildContext context) {
+    const primaryBlue = Color(0xFF00B4D8);
+
+    return Dialog(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+      ),
+      backgroundColor: Colors.white,
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: primaryBlue.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.mark_email_read_outlined,
+                color: primaryBlue,
+                size: 48,
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Verification Email Sent',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'A verification link has been sent to:\n$email\n\nYou can verify your email anytime. You can skip this step and continue to the dashboard now.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 14,
+                color: Color(0xFF64748B),
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  Navigator.of(context).popUntil((route) => route.isFirst);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: primaryBlue,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  elevation: 0,
+                ),
+                child: const Text(
+                  'Skip & Go to Dashboard',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),

@@ -1,4 +1,4 @@
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const axios = require("axios");
 require("dotenv").config();
@@ -240,16 +240,27 @@ exports.verifyAccessToken = onCall(async (request) => {
  */
 exports.linkPhoneNumber = onCall(async (request) => {
   const callerUid = request.auth?.uid;
-  const { uid, mobileNumber } = request.data || {};
+  let { uid, mobileNumber } = request.data || {};
 
   if (!callerUid) {
     throw new HttpsError("unauthenticated", "You must be signed in to link a phone number.");
   }
-  if (!uid || !mobileNumber) {
-    throw new HttpsError("invalid-argument", "'uid' and 'mobileNumber' are required.");
-  }
+  uid = uid || callerUid;
   if (callerUid !== uid) {
     throw new HttpsError("permission-denied", "You can only link your own phone number.");
+  }
+
+  // If mobileNumber was not provided directly in payload, lookup from Firestore doc
+  if (!mobileNumber) {
+    const userDoc = await admin.firestore().collection("users").doc(uid).get();
+    if (userDoc.exists) {
+      const data = userDoc.data();
+      mobileNumber = data.mobileNumber || data.phone;
+    }
+  }
+
+  if (!mobileNumber) {
+    throw new HttpsError("invalid-argument", "'mobileNumber' is required.");
   }
 
   // Normalize: strip formatting, add country code +91 for 10-digit Indian numbers
@@ -271,6 +282,52 @@ exports.linkPhoneNumber = onCall(async (request) => {
       throw new HttpsError("already-exists", "This phone number is already linked to another account.");
     }
     throw new HttpsError("internal", errMsg);
+  }
+});
+
+
+/**
+ * HTTP endpoint to sync all users' phone numbers from Firestore to Firebase Auth in one pass.
+ * Can be called via GET request to https://us-central1-oceankart-83bbd.cloudfunctions.net/syncAllUsersAuthPhone
+ */
+exports.syncAllUsersAuthPhone = onRequest(async (req, res) => {
+  try {
+    const usersSnap = await admin.firestore().collection("users").get();
+    const results = [];
+
+    for (const doc of usersSnap.docs) {
+      const userId = doc.id;
+      const data = doc.data();
+      const rawPhone = data.mobileNumber || data.phone;
+
+      if (!rawPhone) {
+        results.push({ uid: userId, email: data.email, status: "skipped (no phone in firestore)" });
+        continue;
+      }
+
+      let clean = String(rawPhone).replace(/[+\s-]/g, "");
+      if (clean.length === 10) {
+        clean = `91${clean}`;
+      }
+      const e164Phone = `+${clean}`;
+
+      try {
+        const userRecord = await admin.auth().getUser(userId);
+        if (userRecord.phoneNumber !== e164Phone) {
+          await admin.auth().updateUser(userId, { phoneNumber: e164Phone });
+          results.push({ uid: userId, email: data.email, phone: e164Phone, status: "updated" });
+        } else {
+          results.push({ uid: userId, email: data.email, phone: e164Phone, status: "already matching" });
+        }
+      } catch (err) {
+        results.push({ uid: userId, email: data.email, phone: e164Phone, status: `error: ${err.message}` });
+      }
+    }
+
+    res.status(200).json({ success: true, count: results.length, results });
+  } catch (error) {
+    console.error("syncAllUsersAuthPhone Error:", error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
