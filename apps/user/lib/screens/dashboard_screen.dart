@@ -926,7 +926,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         malayalamName != null && malayalamName.trim().isNotEmpty
         ? '$name\\n($malayalamName)'
         : name;
-    final String? imageUrl = data['imageUrl'];
+    final imagesList = (data['images'] as List?)?.map((e) => e.toString()).toList();
+    final String? imageUrl = (imagesList != null && imagesList.isNotEmpty)
+        ? imagesList.first
+        : data['imageUrl']?.toString();
     final double price = (data['pricePerKg'] as num?)?.toDouble() ?? 0.0;
     final bool isOffer = data['isOffer'] == true;
     final double offerPrice = (data['offerPrice'] as num?)?.toDouble() ?? 0.0;
@@ -952,16 +955,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   color: const Color(0xFFF1F5F9),
                   width: double.infinity,
                   height: double.infinity,
-                  child: imageUrl != null && imageUrl.isNotEmpty
-                      ? (imageUrl.startsWith('http')
-                            ? CachedNetworkImage(imageUrl: imageUrl, fit: BoxFit.cover)
-                            : Image.memory(
-                                const Base64Decoder().convert(imageUrl),
-                                fit: BoxFit.cover,
-                              ))
-                      : const Center(
-                          child: Icon(Icons.image, color: Colors.black12, size: 32),
-                        ),
+                  child: () {
+                    if (imageUrl == null || imageUrl.isEmpty) {
+                      return const Center(child: Icon(Icons.image, color: Colors.black12, size: 32));
+                    }
+                    if (imageUrl.startsWith('http')) {
+                      return CachedNetworkImage(imageUrl: imageUrl, fit: BoxFit.cover);
+                    }
+                    final cleanBase64 = imageUrl.contains('base64,') ? imageUrl.split('base64,').last : imageUrl;
+                    try {
+                      return Image.memory(const Base64Decoder().convert(cleanBase64), fit: BoxFit.cover);
+                    } catch (_) {
+                      return const Center(child: Icon(Icons.image, color: Colors.black12, size: 32));
+                    }
+                  }(),
                 ),
                 if (isOffer)
                   Positioned(

@@ -135,7 +135,10 @@ class _OrdersScreenState extends State<OrdersScreen> {
         final String status = data['status'] ?? 'pending';
         final double total = (data['totalAmount'] as num?)?.toDouble() ?? 0.0;
         final String phone = data['phone'] ?? 'N/A';
-        final String address = data['deliveryAddress'] ?? 'N/A';
+        final String addressLabel = data['deliveryAddressLabel'] as String? ?? '';
+        final String addressRaw = data['deliveryAddress'] ?? 'N/A';
+        final String address = addressLabel.isNotEmpty ? '$addressLabel — $addressRaw' : addressRaw;
+        final String customerName = data['customerName'] ?? '';
         final items = data['items'] as List<dynamic>? ?? [];
         
         DateTime? date;
@@ -194,6 +197,16 @@ class _OrdersScreenState extends State<OrdersScreen> {
                 const Divider(height: 24),
                 
                 // Customer Details
+                if (customerName.isNotEmpty) ...[
+                  Row(
+                    children: [
+                      Icon(Icons.person_outline, size: 16, color: Colors.grey.shade600),
+                      const SizedBox(width: 8),
+                      Text(customerName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                ],
                 Row(
                   children: [
                     Icon(Icons.phone_outlined, size: 16, color: Colors.grey.shade600),

@@ -15,7 +15,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
   late TextEditingController _nameController;
   late TextEditingController _phoneController;
-  late TextEditingController _addressController;
 
   bool _isSaving = false;
 
@@ -37,14 +36,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
     
     _phoneController = TextEditingController(text: getPhone());
-    _addressController = TextEditingController(text: widget.userData['address'] ?? '');
   }
 
   @override
   void dispose() {
     _nameController.dispose();
     _phoneController.dispose();
-    _addressController.dispose();
     super.dispose();
   }
 
@@ -58,7 +55,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
           'name': _nameController.text.trim(),
           'phone': _phoneController.text.trim(),
-          'address': _addressController.text.trim(),
         }, SetOptions(merge: true));
 
         if (mounted) {
@@ -129,12 +125,57 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   validator: (val) => val == null || val.trim().isEmpty ? 'Phone number is required' : null,
                 ),
                 const SizedBox(height: 20),
-                _buildLabel('Delivery Address'),
-                _buildTextField(
-                  controller: _addressController,
-                  hint: 'Enter your complete delivery address',
-                  icon: Icons.location_on_outlined,
-                  maxLines: 3,
+                // Addresses info tile
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF00B4D8).withValues(alpha: 0.07),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: const Color(0xFF00B4D8).withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF00B4D8).withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          Icons.location_on_rounded,
+                          color: Color(0xFF00B4D8),
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Delivery Addresses',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                                color: Color(0xFF0F172A),
+                              ),
+                            ),
+                            SizedBox(height: 3),
+                            Text(
+                              'Manage your saved addresses at checkout — pin your location on the map to add new ones.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF64748B),
+                                height: 1.4,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 40),
                 SizedBox(

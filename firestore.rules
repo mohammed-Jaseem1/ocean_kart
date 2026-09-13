@@ -41,6 +41,11 @@ service cloud.firestore {
       match /cart/{cartItemId} {
         allow read, write: if isAuthenticated() && request.auth.uid == userId;
       }
+
+      // IMPORTANT: Rules for the saved addresses subcollection
+      match /addresses/{addressId} {
+        allow read, write: if isAuthenticated() && request.auth.uid == userId;
+      }
     }
 
     match /shop_owners/{shopOwnerId} {

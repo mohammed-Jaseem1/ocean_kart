@@ -18,11 +18,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Map<String, dynamic>? userData;
   bool _isLoading = true;
+  List<Map<String, dynamic>> _savedAddresses = [];
+  bool _isDeletingAddress = false;
 
   @override
   void initState() {
     super.initState();
     _fetchUserData();
+    _loadSavedAddresses();
   }
 
   Future<void> _fetchUserData() async {
@@ -51,10 +54,74 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _loadSavedAddresses() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('addresses')
+          .orderBy('createdAt', descending: false)
+          .get();
+      if (mounted) {
+        setState(() {
+          _savedAddresses = snapshot.docs
+              .map((doc) => {'id': doc.id, ...doc.data()})
+              .toList();
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading addresses: $e');
+    }
+  }
+
+  Future<void> _deleteAddress(String addressId) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Delete Address', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: const Text('Remove this saved address?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete', style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      setState(() => _isDeletingAddress = true);
+      try {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('addresses')
+            .doc(addressId)
+            .delete();
+        setState(() {
+          _savedAddresses.removeWhere((a) => a['id'] == addressId);
+        });
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to delete: $e')),
+          );
+        }
+      } finally {
+        if (mounted) setState(() => _isDeletingAddress = false);
+      }
+    }
+  }
+
   Future<void> _handleLogout() async {
     await FirebaseAuth.instance.signOut();
     if (mounted) {
-      Navigator.pop(context); // Pop back to whatever handles auth state
+      Navigator.pop(context);
     }
   }
 
@@ -74,7 +141,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
     
     final phone = getPhone();
-    final address = userData?['address'] as String?;
 
     return Scaffold(
       backgroundColor: _navyBlue,
@@ -152,9 +218,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        if (address != null && address.trim().isNotEmpty) ...[
+                        if (_savedAddresses.isNotEmpty) ...[
                           Text(
-                            'Delivery Details',
+                            'Saved Addresses',
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w800,
@@ -162,57 +228,77 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                           ),
                           const SizedBox(height: 12),
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: _cardColor,
-                              borderRadius: BorderRadius.circular(16),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.03),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: _lightBlue.withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(12),
+                          ..._savedAddresses.map((addr) {
+                            final label = addr['label'] as String? ?? 'Address';
+                            final address = addr['address'] as String? ?? '';
+                            IconData labelIcon = Icons.location_on;
+                            if (label == 'Home') labelIcon = Icons.home_rounded;
+                            if (label == 'Work') labelIcon = Icons.work_rounded;
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 10),
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: _cardColor,
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.03),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 4),
                                   ),
-                                  child: Icon(Icons.location_on, color: _lightBlue, size: 28),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Saved Address',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 15,
-                                          color: _textColor,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        address,
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          color: _textColor.withValues(alpha: 0.6),
-                                          height: 1.3,
-                                        ),
-                                      ),
-                                    ],
+                                ],
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: _lightBlue.withValues(alpha: 0.1),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Icon(labelIcon, color: _lightBlue, size: 22),
                                   ),
-                                ),
-                              ],
-                            ),
-                          ),
+                                  const SizedBox(width: 14),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          label,
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14,
+                                            color: _textColor,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 3),
+                                        Text(
+                                          address,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            color: _textColor.withValues(alpha: 0.6),
+                                            height: 1.3,
+                                          ),
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.delete_outline_rounded,
+                                      color: Colors.redAccent,
+                                      size: 20,
+                                    ),
+                                    onPressed: _isDeletingAddress
+                                        ? null
+                                        : () => _deleteAddress(addr['id'] as String),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }),
                           const SizedBox(height: 24),
                         ],
                         Text(

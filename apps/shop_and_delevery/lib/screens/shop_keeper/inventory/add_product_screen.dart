@@ -3,9 +3,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
+import 'package:image/image.dart' as img;
 import 'dart:typed_data';
 import 'dart:convert';
-import 'product_management_screen.dart';
 
 class AddProductScreen extends StatefulWidget {
   final String? productId;
@@ -27,13 +27,12 @@ class _AddProductScreenState extends State<AddProductScreen> {
   final _nameController = TextEditingController();
   final _malayalamNameController = TextEditingController();
   final _priceController = TextEditingController();
-  final _quantityController = TextEditingController();
   final _offerPriceController = TextEditingController();
 
   bool _isOffer = false;
   
   String _selectedCategory = 'Sea Water Fish';
-  final List<String> _categories = [
+  List<String> _categories = [
     'Sea Water Fish',
     'Fresh Water Fish',
     'Prawns & Shrimps',
@@ -41,21 +40,30 @@ class _AddProductScreenState extends State<AddProductScreen> {
     'Exotic Seafood',
     'Others'
   ];
+  bool _isLoadingCategories = true;
 
   bool _isLoading = false;
-  String? _imageUrl; // Placeholder for uploaded image URL
-  Uint8List? _imageBytes; // Store local bytes for preview
+  List<String> _productImages = [];
 
   @override
   void initState() {
     super.initState();
+    _fetchCategories();
+
     if (widget.productData != null) {
       _nameController.text = widget.productData!['name'] ?? '';
       _malayalamNameController.text = widget.productData!['malayalamName'] ?? '';
       _selectedCategory = widget.productData!['category'] ?? 'Sea Water Fish';
-      _imageUrl = widget.productData!['imageUrl'];
       _priceController.text = widget.productData!['pricePerKg']?.toString() ?? '';
-      _quantityController.text = widget.productData!['stockQuantity']?.toString() ?? '';
+
+      if (widget.productData!['images'] != null && widget.productData!['images'] is List) {
+        _productImages = List<String>.from(
+          (widget.productData!['images'] as List).map((e) => e.toString()),
+        );
+      } else if (widget.productData!['imageUrl'] != null &&
+          widget.productData!['imageUrl'].toString().trim().isNotEmpty) {
+        _productImages = [widget.productData!['imageUrl'].toString()];
+      }
       
       if (widget.productData!['isOffer'] == true) {
         _isOffer = true;
@@ -64,34 +72,119 @@ class _AddProductScreenState extends State<AddProductScreen> {
     }
   }
 
+  Future<void> _fetchCategories() async {
+    try {
+      final snapshot = await FirebaseFirestore.instance.collection('categories').get();
+      if (snapshot.docs.isNotEmpty) {
+        final fetchedCats = snapshot.docs
+            .map((doc) => (doc.data()['name'] ?? doc.data()['categoryName'] ?? '').toString().trim())
+            .where((name) => name.isNotEmpty)
+            .toList();
+
+        if (fetchedCats.isNotEmpty) {
+          final uniqueSet = <String>{...fetchedCats, ..._categories};
+          if (_selectedCategory.isNotEmpty) {
+            uniqueSet.add(_selectedCategory);
+          }
+          if (mounted) {
+            setState(() {
+              _categories = uniqueSet.toList();
+              if (!_categories.contains(_selectedCategory) && _categories.isNotEmpty) {
+                _selectedCategory = _categories.first;
+              }
+              _isLoadingCategories = false;
+            });
+          }
+          return;
+        }
+      }
+    } catch (e) {
+      debugPrint('Error fetching categories: $e');
+    }
+    if (mounted) {
+      setState(() {
+        _isLoadingCategories = false;
+      });
+    }
+  }
+
   @override
   void dispose() {
     _nameController.dispose();
     _malayalamNameController.dispose();
     _priceController.dispose();
-    _quantityController.dispose();
     _offerPriceController.dispose();
     super.dispose();
   }
 
+import 'package:flutter/foundation.dart';
+
+String? _processWebpInIsolate(Uint8List rawBytes) {
+  try {
+    final decodedImage = img.decodeImage(rawBytes);
+    if (decodedImage == null) return null;
+
+    img.Image resized = decodedImage;
+    if (decodedImage.width > 600 || decodedImage.height > 600) {
+      if (decodedImage.width >= decodedImage.height) {
+        resized = img.copyResize(decodedImage, width: 600);
+      } else {
+        resized = img.copyResize(decodedImage, height: 600);
+      }
+    }
+
+    final webpBytes = img.encodeWebP(resized);
+    return 'data:image/webp;base64,${base64Encode(webpBytes)}';
+  } catch (e) {
+    return 'data:image/jpeg;base64,${base64Encode(rawBytes)}';
+  }
+}
+
+  Future<String?> _compressAndEncodeToWebp(Uint8List rawBytes) async {
+    try {
+      return await compute(_processWebpInIsolate, rawBytes);
+    } catch (e) {
+      debugPrint('WebP encoding failed: $e');
+      return 'data:image/jpeg;base64,${base64Encode(rawBytes)}';
+    }
+  }
+
   void _pickAndUploadImage() async {
+    if (_productImages.length >= 4) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Maximum 4 images allowed per product'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+    final pickedFile = await picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1024,
+      maxHeight: 1024,
+      imageQuality: 70,
+    );
 
     if (pickedFile == null || !mounted) return;
 
     final croppedFile = await ImageCropper().cropImage(
       sourcePath: pickedFile.path,
-      aspectRatio: const CropAspectRatio(ratioX: 3, ratioY: 2),
+      maxWidth: 800,
+      maxHeight: 800,
+      compressQuality: 70,
+      aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
       uiSettings: [
         AndroidUiSettings(
-            toolbarTitle: 'Crop Image',
-            toolbarColor: Colors.black,
+            toolbarTitle: 'Crop Product Image',
+            toolbarColor: const Color(0xFF0A1628),
             toolbarWidgetColor: Colors.white,
-            initAspectRatio: CropAspectRatioPreset.ratio3x2,
+            initAspectRatio: CropAspectRatioPreset.square,
             lockAspectRatio: true),
         IOSUiSettings(
-          title: 'Crop Image',
+          title: 'Crop Product Image',
           aspectRatioLockEnabled: true,
           resetAspectRatioEnabled: false,
           aspectRatioPickerButtonHidden: true,
@@ -110,21 +203,20 @@ class _AddProductScreenState extends State<AddProductScreen> {
     });
 
     try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) throw Exception('No user logged in');
-
-      // Convert to Base64 to store directly in Firestore
       final bytes = await croppedFile.readAsBytes();
-      final base64String = base64Encode(bytes);
+      final webpDataUrl = await _compressAndEncodeToWebp(bytes);
 
-      if (mounted) {
+      if (webpDataUrl != null && mounted) {
         setState(() {
-          _imageUrl = base64String;
-          _imageBytes = bytes; // Use local bytes for preview
+          _productImages.add(webpDataUrl);
           _isLoading = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Image uploaded successfully!'), backgroundColor: Colors.green),
+          SnackBar(
+            content: Text('Image optimized (WebP) & added! (${_productImages.length}/4)'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
         );
       }
     } catch (e) {
@@ -133,7 +225,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
           _isLoading = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to upload image: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text('Failed to process image: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -142,9 +234,9 @@ class _AddProductScreenState extends State<AddProductScreen> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     
-    if (_imageUrl == null) {
+    if (_productImages.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please upload an image first')),
+        const SnackBar(content: Text('Please add at least 1 product image')),
       );
       return;
     }
@@ -157,7 +249,6 @@ class _AddProductScreenState extends State<AddProductScreen> {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception('No user logged in');
 
-      // Save to Firestore
       final productsRef = FirebaseFirestore.instance.collection('users').doc(user.uid).collection('products');
       
       final productPayload = {
@@ -165,25 +256,25 @@ class _AddProductScreenState extends State<AddProductScreen> {
         'name': _nameController.text.trim(),
         'malayalamName': _malayalamNameController.text.trim(),
         'category': _selectedCategory,
-        'imageUrl': _imageUrl,
+        'images': _productImages,
+        'imageUrl': _productImages.first,
         'pricePerKg': double.tryParse(_priceController.text.trim()) ?? 0.0,
-        'stockQuantity': double.tryParse(_quantityController.text.trim()) ?? 0.0,
+        'stockQuantity': (widget.productData?['stockQuantity'] as num?)?.toDouble() ?? 100.0,
         'isOffer': _isOffer,
         'offerPrice': _isOffer ? (double.tryParse(_offerPriceController.text.trim()) ?? 0.0) : 0.0,
+        'status': widget.productData?['status'] ?? 'active',
+        'isAvailable': widget.productData?['isAvailable'] ?? true,
       };
 
       if (widget.productId != null) {
-        // Update existing product
         await productsRef.doc(widget.productId).update({
           ...productPayload,
           'updatedAt': FieldValue.serverTimestamp(),
         });
       } else {
-        // Add new product
         await productsRef.add({
           ...productPayload,
           'createdAt': FieldValue.serverTimestamp(),
-          'status': 'active', // active or out_of_stock
         });
       }
 
@@ -194,12 +285,12 @@ class _AddProductScreenState extends State<AddProductScreen> {
             backgroundColor: Colors.green,
           ),
         );
-        Navigator.pop(context); // Go back to dashboard
+        Navigator.pop(context);
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error adding product: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text('Error saving product: $e'), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -211,24 +302,164 @@ class _AddProductScreenState extends State<AddProductScreen> {
     }
   }
 
+  Widget _buildMultiImagePicker(Color primaryBlue) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Product Images *',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF334155),
+              ),
+            ),
+            Text(
+              '${_productImages.length}/4 images (WebP)',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey.shade600,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 110,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: _productImages.length + (_productImages.length < 4 ? 1 : 0),
+            itemBuilder: (context, index) {
+              if (index < _productImages.length) {
+                final imgUrl = _productImages[index];
+                ImageProvider imgProvider;
+                if (imgUrl.startsWith('http')) {
+                  imgProvider = NetworkImage(imgUrl);
+                } else if (imgUrl.contains('base64,')) {
+                  final base64Str = imgUrl.split('base64,').last;
+                  imgProvider = MemoryImage(base64Decode(base64Str));
+                } else {
+                  imgProvider = MemoryImage(base64Decode(imgUrl));
+                }
+
+                return Padding(
+                  padding: const EdgeInsets.only(right: 12.0),
+                  child: Stack(
+                    children: [
+                      Container(
+                        width: 100,
+                        height: 100,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: index == 0 ? primaryBlue : Colors.grey.shade300,
+                            width: index == 0 ? 2 : 1,
+                          ),
+                          image: DecorationImage(
+                            image: imgProvider,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      ),
+                      if (index == 0)
+                        Positioned(
+                          bottom: 4,
+                          left: 4,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: primaryBlue,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text(
+                              'COVER',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      Positioned(
+                        top: 4,
+                        right: 4,
+                        child: GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _productImages.removeAt(index);
+                            });
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(
+                              color: Colors.red,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.close, color: Colors.white, size: 12),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              } else {
+                return GestureDetector(
+                  onTap: _isLoading ? null : _pickAndUploadImage,
+                  child: Container(
+                    width: 100,
+                    height: 100,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade50,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: Colors.grey.shade300),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.add_a_photo_outlined, size: 28, color: primaryBlue),
+                        const SizedBox(height: 4),
+                        Text(
+                          '+ Add Image',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey.shade700,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    const bgColor = Colors.white;
-    const cardColor = Color(0xFFF5F7FA);
-    const accentColor = Colors.black;
+    const primaryBlue = Color(0xFF00B4D8);
+    const navyBlue = Color(0xFF0A1628);
 
     final inputDecoration = InputDecoration(
-      hintStyle: TextStyle(color: Colors.black.withValues(alpha: 0.4), fontSize: 14),
+      hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
       filled: true,
-      fillColor: Colors.black.withValues(alpha: 0.05),
+      fillColor: Colors.grey.shade50,
       contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.black.withValues(alpha: 0.1)),
+        borderSide: BorderSide(color: Colors.grey.shade300),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: accentColor),
+        borderSide: const BorderSide(color: primaryBlue, width: 1.5),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
@@ -242,168 +473,79 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
     Widget buildLabel(String text) {
       return Padding(
-        padding: const EdgeInsets.only(bottom: 8.0, left: 4.0),
+        padding: const EdgeInsets.only(bottom: 6.0, top: 4.0),
         child: Text(
-          text.toUpperCase(),
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-            color: Colors.black.withValues(alpha: 0.7),
-            letterSpacing: 0.5,
+          text,
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF334155),
           ),
         ),
       );
     }
 
     return Scaffold(
-      backgroundColor: bgColor,
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: Colors.white,
         elevation: 0,
         title: Text(
           widget.productId != null ? 'Edit Product' : 'Add New Product',
-          style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+          style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 18),
         ),
-        iconTheme: const IconThemeData(color: Colors.black),
-        actions: [
-          TextButton.icon(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const ProductManagementScreen()),
-              );
-            },
-            icon: const Icon(Icons.edit_note, color: Colors.black),
-            label: const Text('Manage Products', style: TextStyle(color: Colors.black)),
-          ),
-        ],
+        iconTheme: const IconThemeData(color: Color(0xFF0F172A)),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 600),
-          child: Card(
-            color: cardColor,
-            elevation: 2,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-              side: BorderSide(
-                color: Colors.black.withValues(alpha: 0.05),
-                width: 1,
+        padding: const EdgeInsets.all(20.0),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Multi-Image Picker Widget (Limit 4, WebP compressed)
+              _buildMultiImagePicker(primaryBlue),
+              const SizedBox(height: 24),
+
+              // Fish / Product Name
+              buildLabel('Fish / Product Name *'),
+              TextFormField(
+                controller: _nameController,
+                style: const TextStyle(color: Color(0xFF0F172A), fontSize: 15),
+                decoration: inputDecoration.copyWith(
+                  hintText: 'e.g. King Fish, Sardine, Mackerel...',
+                ),
+                validator: (value) => value == null || value.trim().isEmpty ? 'Please enter product name' : null,
               ),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(20.0),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Image Upload Section
-                    Center(
-                      child: GestureDetector(
-                        onTap: _isLoading ? null : _pickAndUploadImage,
-                        child: Container(
-                          height: 110,
-                          width: 110,
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.05),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: _imageUrl != null ? Colors.green : Colors.black.withValues(alpha: 0.2),
-                              width: 2,
-                            ),
-                            image: _imageBytes != null
-                                ? DecorationImage(
-                                    image: MemoryImage(_imageBytes!),
-                                    fit: BoxFit.cover,
-                                  )
-                                : (_imageUrl != null
-                                    ? DecorationImage(
-                                        image: NetworkImage(_imageUrl!),
-                                        fit: BoxFit.cover,
-                                      )
-                                    : null),
-                          ),
-                          child: (_imageUrl == null && _imageBytes == null)
-                              ? Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(Icons.add_a_photo_outlined, size: 32, color: Colors.black.withValues(alpha: 0.5)),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      'Upload',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.black.withValues(alpha: 0.5),
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ],
-                                )
-                              : Align(
-                                  alignment: Alignment.topRight,
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(8.0),
-                                    child: Container(
-                                      padding: const EdgeInsets.all(4),
-                                      decoration: const BoxDecoration(
-                                        color: Colors.greenAccent,
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(Icons.check, color: bgColor, size: 16),
-                                    ),
-                                  ),
-                                ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 32),
+              const SizedBox(height: 16),
 
-                    // Product Details Form
-                    const Text(
-                      '1. FISH LOCAL IDENTITY (പേര് വിവരങ്ങൾ)',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blueAccent,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
+              // Malayalam Name
+              buildLabel('Malayalam Name (Optional)'),
+              TextFormField(
+                controller: _malayalamNameController,
+                style: const TextStyle(color: Color(0xFF0F172A), fontSize: 15),
+                decoration: inputDecoration.copyWith(
+                  hintText: 'e.g. നെയ്മീൻ, ചാള, അയില...',
+                ),
+              ),
+              const SizedBox(height: 16),
 
-                    buildLabel('FISH / PRODUCT NAME *'),
-                    TextFormField(
-                      controller: _nameController,
-                      style: const TextStyle(color: Colors.black),
-                      decoration: inputDecoration.copyWith(
-                        hintText: 'e.g. King Fish, Sardine, Mackerel...',
-                      ),
-                      validator: (value) => value == null || value.isEmpty ? 'Required' : null,
-                    ),
-                    const SizedBox(height: 16),
-
-                    buildLabel('MALAYALAM NAME (OPTIONAL)'),
-                    TextFormField(
-                      controller: _malayalamNameController,
-                      style: const TextStyle(color: Colors.black),
-                      decoration: inputDecoration.copyWith(
-                        hintText: 'e.g. നെയ്മീൻ, ചാള, അയില...',
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    buildLabel('CATEGORY *'),
-                    DropdownButtonFormField<String>(
+              // Category (Fetched dynamically from Firestore 'categories')
+              buildLabel('Category *'),
+              _isLoadingCategories
+                  ? const SizedBox(
+                      height: 48,
+                      child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                    )
+                  : DropdownButtonFormField<String>(
                       initialValue: _selectedCategory,
-                      dropdownColor: cardColor,
-                      style: const TextStyle(color: Colors.black),
-                      decoration: inputDecoration.copyWith(
-                        hintText: 'Select Category',
-                      ),
+                      dropdownColor: Colors.white,
+                      style: const TextStyle(color: Color(0xFF0F172A), fontSize: 15),
+                      decoration: inputDecoration,
                       items: _categories.map((String category) {
                         return DropdownMenuItem(
                           value: category,
-                          child: Text(category, style: const TextStyle(color: Colors.black)),
+                          child: Text(category),
                         );
                       }).toList(),
                       onChanged: (String? newValue) {
@@ -414,125 +556,117 @@ class _AddProductScreenState extends State<AddProductScreen> {
                         }
                       },
                     ),
-                    const SizedBox(height: 16),
+              const SizedBox(height: 16),
 
-                    Card(
-                      elevation: 0,
-                      color: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(color: Colors.black.withValues(alpha: 0.1)),
+              // Sale Price
+              buildLabel('Sale Price (₹ per kg) *'),
+              TextFormField(
+                controller: _priceController,
+                style: const TextStyle(color: Color(0xFF0F172A), fontSize: 15),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: inputDecoration.copyWith(
+                  hintText: 'e.g. 250',
+                  prefixText: '₹ ',
+                ),
+                validator: (value) => value == null || value.trim().isEmpty ? 'Please enter sale price' : null,
+              ),
+              const SizedBox(height: 16),
+
+              // Put on Offer Switch (Clean Inline Tile)
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: Column(
+                  children: [
+                    SwitchListTile(
+                      title: const Text(
+                        'Special Offer Discount',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                          color: Color(0xFF0F172A),
+                        ),
                       ),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4.0),
+                      subtitle: Text(
+                        _isOffer ? 'Special discounted price active' : 'Enable offer price',
+                        style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                      ),
+                      value: _isOffer,
+                      activeThumbColor: primaryBlue,
+                      onChanged: (bool value) {
+                        setState(() {
+                          _isOffer = value;
+                        });
+                      },
+                    ),
+                    if (_isOffer) ...[
+                      const Divider(height: 1),
+                      Padding(
+                        padding: const EdgeInsets.all(16.0),
                         child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            SwitchListTile(
-                              title: const Text(
-                                'Put on Offer',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
-                                  color: Colors.black,
-                                ),
+                            buildLabel('Offer Price (₹ per kg) *'),
+                            TextFormField(
+                              controller: _offerPriceController,
+                              style: const TextStyle(color: Color(0xFF0F172A), fontSize: 15),
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              decoration: inputDecoration.copyWith(
+                                hintText: 'e.g. 199',
+                                prefixText: '₹ ',
+                                fillColor: Colors.white,
                               ),
-                              value: _isOffer,
-                              activeThumbColor: Colors.blueAccent,
-                              onChanged: (bool value) {
-                                setState(() {
-                                  _isOffer = value;
-                                });
-                              },
+                              validator: (value) {
+                                if (!_isOffer) return null;
+                                if (value == null || value.trim().isEmpty) return 'Please enter offer price';
+                                return null;
+                               },
                             ),
-                            if (_isOffer) ...[
-                              const Divider(height: 1),
-                              Padding(
-                                padding: const EdgeInsets.all(16.0),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                                  children: [
-                                    buildLabel('OFFER PRICE (₹ PER KG) *'),
-                                    TextFormField(
-                                      controller: _offerPriceController,
-                                      style: const TextStyle(color: Colors.black),
-                                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                      decoration: inputDecoration.copyWith(
-                                        hintText: 'e.g. 199',
-                                        fillColor: cardColor,
-                                      ),
-                                      validator: (value) {
-                                        if (!_isOffer) return null;
-                                        if (value == null || value.isEmpty) return 'Required when offer is active';
-                                        return null;
-                                      },
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
                           ],
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    buildLabel('SALE PRICE (₹ PER KG) *'),
-                    TextFormField(
-                      controller: _priceController,
-                      style: const TextStyle(color: Colors.black),
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: inputDecoration.copyWith(
-                        hintText: 'e.g. 250',
-                      ),
-                      validator: (value) => value == null || value.isEmpty ? 'Required' : null,
-                    ),
-                    const SizedBox(height: 16),
-
-                    buildLabel('INITIAL QUANTITY (KG) *'),
-                    TextFormField(
-                      controller: _quantityController,
-                      style: const TextStyle(color: Colors.black),
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: inputDecoration.copyWith(
-                        hintText: 'e.g. 10',
-                      ),
-                      validator: (value) => value == null || value.isEmpty ? 'Required' : null,
-                    ),
-                    const SizedBox(height: 32),
-
-                    ElevatedButton(
-                      onPressed: _isLoading ? null : _submit,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: accentColor,
-                        foregroundColor: bgColor,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        elevation: 2,
-                      ),
-                      child: _isLoading
-                          ? const SizedBox(
-                              height: 24,
-                              width: 24,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 3,
-                                valueColor: AlwaysStoppedAnimation<Color>(bgColor),
-                              ),
-                            )
-                          : Text(
-                              widget.productId != null ? 'Update Product' : 'Save Product',
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                    ),
+                    ],
                   ],
                 ),
               ),
-            ),
+              const SizedBox(height: 32),
+
+              // Submit Button
+              SizedBox(
+                height: 52,
+                child: ElevatedButton(
+                  onPressed: _isLoading ? null : _submit,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: navyBlue,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: _isLoading
+                      ? const SizedBox(
+                          height: 24,
+                          width: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : Text(
+                          widget.productId != null ? 'Update Product' : 'Save Product',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
           ),
         ),
       ),

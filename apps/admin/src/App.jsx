@@ -4,8 +4,6 @@ import { doc, getDoc } from 'firebase/firestore'
 import { auth, db } from './firebase'
 import Homepage from './components/Homepage'
 import Loginpage from './components/Loginpage'
-import UserApprovals from './components/UserApprovals';
-
 import './App.css'
 
 function App() {
@@ -18,7 +16,6 @@ function App() {
         try {
           const uid = currentUser.uid;
           const adminDocSnap = await getDoc(doc(db, 'admin', uid));
-
 
           if (adminDocSnap.exists()) {
             setUser(currentUser);
@@ -39,9 +36,6 @@ function App() {
     return () => unsubscribe();
   }, []);
 
-
-
-
   const handleSignOut = async () => {
     try {
       await signOut(auth);
@@ -57,12 +51,12 @@ function App() {
         alignItems: 'center',
         justifyContent: 'center',
         minHeight: '100vh',
-        background: '#0a1628',
-        color: '#fff',
+        background: 'var(--bg-base)',
+        color: 'var(--text-primary)',
         fontFamily: 'Inter, sans-serif'
       }}>
-        <div style={{ fontSize: '18px', fontWeight: '500', letterSpacing: '0.5px' }}>
-          Loading OceanKart...
+        <div style={{ fontSize: '1rem', fontWeight: '500', letterSpacing: '0.5px' }}>
+          Loading OceanKart Admin...
         </div>
       </div>
     );
@@ -80,5 +74,3 @@ function App() {
 }
 
 export default App
-
-

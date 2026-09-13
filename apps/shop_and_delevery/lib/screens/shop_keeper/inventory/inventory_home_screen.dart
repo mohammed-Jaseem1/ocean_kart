@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'add_product_screen.dart';
-import 'add_stock_screen.dart';
 import 'dart:convert';
 
 class InventoryHomeScreen extends StatefulWidget {
@@ -16,18 +15,35 @@ class _InventoryHomeScreenState extends State<InventoryHomeScreen> {
   final user = FirebaseAuth.instance.currentUser;
   String _selectedCategory = 'All';
 
-  Future<void> _updateStock(String productId, double currentStock, double change) async {
-    final newStock = currentStock + change;
-    if (newStock < 0) return;
+  Future<void> _toggleProductStatus(String productId, bool currentlyActive) async {
+    final newStatus = currentlyActive ? 'inactive' : 'active';
     try {
       await FirebaseFirestore.instance
           .collection('users')
           .doc(user!.uid)
           .collection('products')
           .doc(productId)
-          .update({'stockQuantity': newStock});
+          .update({
+            'status': newStatus,
+            'isAvailable': !currentlyActive,
+            'stockQuantity': currentlyActive ? 0.0 : 100.0,
+          });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(currentlyActive ? 'Product set to Inactive' : 'Product set to Active'),
+            backgroundColor: currentlyActive ? Colors.orange : Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error updating stock: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error updating product status: $e'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
@@ -37,15 +53,17 @@ class _InventoryHomeScreenState extends State<InventoryHomeScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Edit Sale Price (₹)', style: TextStyle(color: Colors.black)),
+          title: const Text('Edit Sale Price (₹)', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
           backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           content: TextField(
             controller: priceController,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            style: const TextStyle(color: Colors.black),
+            style: const TextStyle(color: Colors.black, fontSize: 16),
             decoration: const InputDecoration(
               hintText: 'Enter new price',
               hintStyle: TextStyle(color: Colors.grey),
+              prefixText: '₹ ',
               enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
             ),
           ),
@@ -59,8 +77,11 @@ class _InventoryHomeScreenState extends State<InventoryHomeScreen> {
                 final newPrice = double.tryParse(priceController.text);
                 Navigator.pop(context, newPrice);
               },
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.black),
-              child: const Text('Save', style: TextStyle(color: Colors.white)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF00B4D8),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: const Text('Save', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             ),
           ],
         );
@@ -114,6 +135,22 @@ class _InventoryHomeScreenState extends State<InventoryHomeScreen> {
                         Icon(Icons.inventory_2_outlined, size: 64, color: Colors.grey.shade400),
                         const SizedBox(height: 16),
                         Text('No products in inventory', style: TextStyle(fontSize: 18, color: Colors.grey.shade600)),
+                        const SizedBox(height: 12),
+                        ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (context) => const AddProductScreen()),
+                            );
+                          },
+                          icon: const Icon(Icons.add, color: Colors.white),
+                          label: const Text('Add Your First Product', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: navyBlue,
+                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                        ),
                       ],
                     ),
                   );
@@ -172,155 +209,161 @@ class _InventoryHomeScreenState extends State<InventoryHomeScreen> {
                                 children: [
                                   Icon(Icons.filter_alt_off_outlined, size: 64, color: Colors.grey.shade400),
                                   const SizedBox(height: 16),
-                                  Text('No active products found', style: TextStyle(fontSize: 18, color: Colors.grey.shade600)),
+                                  Text('No products found in category', style: TextStyle(fontSize: 18, color: Colors.grey.shade600)),
                                 ],
                               ),
                             )
                           : ListView.builder(
-                  padding: const EdgeInsets.only(left: 16, right: 16, top: 16, bottom: 80), // Padding for FAB
-                  itemCount: docs.length,
-                  itemBuilder: (context, index) {
-                    final data = docs[index].data() as Map<String, dynamic>;
-                    final productId = docs[index].id;
-                    final currentStock = (data['stockQuantity'] as num?)?.toDouble() ?? 0.0;
-                    final currentPrice = (data['pricePerKg'] as num?)?.toDouble() ?? 0.0;
+                              padding: const EdgeInsets.only(left: 16, right: 16, top: 16, bottom: 90),
+                              itemCount: docs.length,
+                              itemBuilder: (context, index) {
+                                final data = docs[index].data() as Map<String, dynamic>;
+                                final productId = docs[index].id;
+                                final currentPrice = (data['pricePerKg'] as num?)?.toDouble() ?? 0.0;
+                                final String status = (data['status'] ?? 'active').toString().toLowerCase();
+                                final bool isActive = status == 'active' && (data['isAvailable'] != false);
 
-                    return Card(
-                      color: Colors.white,
-                      elevation: 2,
-                      margin: const EdgeInsets.only(bottom: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              width: 60,
-                              height: 60,
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(10),
-                                image: data['imageUrl'] != null
-                                    ? DecorationImage(
-                                        image: data['imageUrl'].startsWith('http')
-                                            ? NetworkImage(data['imageUrl']) as ImageProvider
-                                            : MemoryImage(base64Decode(data['imageUrl'])),
-                                        fit: BoxFit.cover,
-                                      )
-                                    : null,
-                                color: Colors.grey.shade200,
-                              ),
-                              child: data['imageUrl'] == null ? const Icon(Icons.image, color: Colors.grey) : null,
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    data['malayalamName'] != null && data['malayalamName'].toString().isNotEmpty
-                                        ? '${data['name'] ?? 'Unknown'} (${data['malayalamName']})'
-                                        : data['name'] ?? 'Unknown',
-                                    style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text('${data['category'] ?? ''}', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
-                                  const SizedBox(height: 8),
-                                  Row(
-                                    children: [
-                                      Text('₹$currentPrice / kg', style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 15)),
-                                      const SizedBox(width: 8),
-                                      InkWell(
-                                        onTap: () => _editPrice(productId, currentPrice),
-                                        child: Container(
-                                          padding: const EdgeInsets.all(4),
-                                          decoration: BoxDecoration(
-                                            color: Colors.grey.shade100,
-                                            borderRadius: BorderRadius.circular(4),
-                                            border: Border.all(color: Colors.grey.shade300)
+                                return Card(
+                                  color: Colors.white,
+                                  elevation: 2,
+                                  margin: const EdgeInsets.only(bottom: 12),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: Row(
+                                      crossAxisAlignment: CrossAxisAlignment.center,
+                                      children: [
+                                        (() {
+                                          final imagesList = (data['images'] as List?)?.map((e) => e.toString()).toList();
+                                          final imgStr = (imagesList != null && imagesList.isNotEmpty)
+                                              ? imagesList.first
+                                              : (data['imageUrl']?.toString());
+
+                                          if (imgStr == null || imgStr.isEmpty) {
+                                            return Container(
+                                              width: 60,
+                                              height: 60,
+                                              decoration: BoxDecoration(
+                                                borderRadius: BorderRadius.circular(12),
+                                                color: Colors.grey.shade200,
+                                              ),
+                                              child: const Icon(Icons.image, color: Colors.grey),
+                                            );
+                                          }
+
+                                          ImageProvider imgProvider;
+                                          if (imgStr.startsWith('http')) {
+                                            imgProvider = NetworkImage(imgStr);
+                                          } else if (imgStr.contains('base64,')) {
+                                            final cleanBase64 = imgStr.split('base64,').last;
+                                            imgProvider = MemoryImage(base64Decode(cleanBase64));
+                                          } else {
+                                            imgProvider = MemoryImage(base64Decode(imgStr));
+                                          }
+
+                                          return Container(
+                                            width: 60,
+                                            height: 60,
+                                            decoration: BoxDecoration(
+                                              borderRadius: BorderRadius.circular(12),
+                                              image: DecorationImage(image: imgProvider, fit: BoxFit.cover),
+                                            ),
+                                          );
+                                        })(),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                data['malayalamName'] != null && data['malayalamName'].toString().isNotEmpty
+                                                    ? '${data['name'] ?? 'Unknown'} (${data['malayalamName']})'
+                                                    : data['name'] ?? 'Unknown',
+                                                style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15),
+                                              ),
+                                              const SizedBox(height: 2),
+                                              Text('${data['category'] ?? ''}', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                                              const SizedBox(height: 6),
+                                              Row(
+                                                children: [
+                                                  Text('₹$currentPrice / kg', style: const TextStyle(color: lightBlue, fontWeight: FontWeight.bold, fontSize: 14)),
+                                                  const SizedBox(width: 6),
+                                                  InkWell(
+                                                    onTap: () => _editPrice(productId, currentPrice),
+                                                    child: Container(
+                                                      padding: const EdgeInsets.all(4),
+                                                      decoration: BoxDecoration(
+                                                        color: Colors.grey.shade100,
+                                                        borderRadius: BorderRadius.circular(6),
+                                                        border: Border.all(color: Colors.grey.shade300)
+                                                      ),
+                                                      child: const Icon(Icons.edit, size: 13, color: Colors.black54),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
                                           ),
-                                          child: const Icon(Icons.edit, size: 14, color: Colors.black54),
                                         ),
-                                      ),
-                                    ],
+
+                                        // Active / Inactive Status Toggle
+                                        Column(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          crossAxisAlignment: CrossAxisAlignment.center,
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                              decoration: BoxDecoration(
+                                                color: isActive ? Colors.green.shade50 : Colors.red.shade50,
+                                                borderRadius: BorderRadius.circular(12),
+                                                border: Border.all(color: isActive ? Colors.green.shade200 : Colors.red.shade200),
+                                              ),
+                                              child: Text(
+                                                isActive ? 'ACTIVE' : 'INACTIVE',
+                                                style: TextStyle(
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: isActive ? Colors.green.shade700 : Colors.red.shade700,
+                                                  letterSpacing: 0.5,
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Transform.scale(
+                                              scale: 0.85,
+                                              child: Switch(
+                                                value: isActive,
+                                                activeThumbColor: lightBlue,
+                                                activeTrackColor: lightBlue.withValues(alpha: 0.3),
+                                                inactiveThumbColor: Colors.grey.shade400,
+                                                inactiveTrackColor: Colors.grey.shade200,
+                                                onChanged: (val) => _toggleProductStatus(productId, isActive),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                ],
-                              ),
+                                );
+                              },
                             ),
-                            Column(
-                              children: [
-                                const Text('Stock (kg)', style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w600)),
-                                const SizedBox(height: 4),
-                                Row(
-                                  children: [
-                                    InkWell(
-                                      onTap: () => _updateStock(productId, currentStock, -1.0),
-                                      child: Container(
-                                        padding: const EdgeInsets.all(4),
-                                        decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(4)),
-                                        child: const Icon(Icons.remove, size: 16, color: Colors.black),
-                                      ),
-                                    ),
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                                      child: Text(
-                                        currentStock == currentStock.toInt() ? '${currentStock.toInt()}' : currentStock.toStringAsFixed(1), 
-                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black)
-                                      ),
-                                    ),
-                                    InkWell(
-                                       onTap: () => _updateStock(productId, currentStock, 1.0),
-                                       child: Container(
-                                         padding: const EdgeInsets.all(4),
-                                         decoration: BoxDecoration(color: lightBlue.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(4)),
-                                         child: const Icon(Icons.add, size: 16, color: lightBlue),
-                                       ),
-                                     ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
+                    ),
+                  ],
+                );
+              },
+            ),
+      floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'add_product',
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const AddProductScreen()),
           );
         },
-      ),
-      floatingActionButton: Column(
-        mainAxisAlignment: MainAxisAlignment.end,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          FloatingActionButton.extended(
-            heroTag: 'add_product',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const AddProductScreen()),
-              );
-            },
-            backgroundColor: navyBlue,
-            icon: const Icon(Icons.add_box_outlined, color: Colors.white),
-            label: const Text('New Product', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-          ),
-          const SizedBox(height: 16),
-          FloatingActionButton.extended(
-            heroTag: 'add_stock',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const AddStockScreen()),
-              );
-            },
-            backgroundColor: lightBlue,
-            icon: const Icon(Icons.inventory_2, color: navyBlue),
-            label: const Text('Add Stock', style: TextStyle(fontWeight: FontWeight.bold, color: navyBlue)),
-          ),
-        ],
+        backgroundColor: navyBlue,
+        icon: const Icon(Icons.add_box_outlined, color: Colors.white),
+        label: const Text('+ Add Product', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 14)),
       ),
     );
   }

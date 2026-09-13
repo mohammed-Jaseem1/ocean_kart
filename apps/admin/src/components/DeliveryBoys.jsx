@@ -30,18 +30,6 @@ const DeliveryBoys = () => {
   const [selectedShopIds, setSelectedShopIds] = useState([]);
   const [assigningShops, setAssigningShops] = useState(false);
 
-  const inputStyle = { 
-    padding: '10px 14px', 
-    borderRadius: '8px', 
-    border: '1px solid #cbd5e1', 
-    fontSize: '14px', 
-    outline: 'none', 
-    boxSizing: 'border-box', 
-    width: '100%',
-    background: '#f8fafc',
-    color: '#0f172a'
-  };
-
   useEffect(() => {
     fetchDeliveryPartners();
     fetchAvailableShops();
@@ -204,7 +192,6 @@ const DeliveryBoys = () => {
     setSelectedPartnerForShops(partner);
     const currentAssigned = partner.assignedShopIds || [];
     const requested = partner.requestedShopIds || [];
-    // Combine assigned + requested so admin can approve all easily
     setSelectedShopIds(Array.from(new Set([...currentAssigned, ...requested])));
     setShowAssignModal(true);
   };
@@ -308,144 +295,132 @@ const DeliveryBoys = () => {
   });
 
   return (
-    <div className="table-card">
-      <div className="table-header" style={{ flexWrap: 'wrap', gap: '16px' }}>
+    <div className="card">
+      <div className="page-header" style={{ marginBottom: '1.5rem', flexDirection: 'column', alignItems: 'stretch', gap: '1.25rem' }}>
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <h2 style={{ margin: 0 }}>Delivery Boys & Partners</h2>
-            <button 
-              onClick={() => {
-                handleCloseModal();
-                setShowAddModal(true);
-              }}
-              style={{ padding: '8px 14px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '600', fontSize: '13px', cursor: 'pointer' }}>
-              + Add Delivery Partner
-            </button>
-          </div>
-          <p style={{ color: '#64748b', fontSize: '13px', margin: '4px 0 0' }}>
+          <h2 className="page-title" style={{ fontSize: '1.5rem' }}>Delivery Personnel</h2>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginTop: '0.25rem' }}>
             Manage delivery personnel, assign shop coverage, and handle shop assignment requests.
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          <div className="search-bar" style={{ maxWidth: '240px' }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
+        <div className="toolbar" style={{ marginBottom: 0, justifyContent: 'space-between', width: '100%' }}>
+          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <input
               type="text"
+              className="form-input"
               placeholder="Search partner or vehicle..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
+              style={{ width: '320px', maxWidth: '100%' }}
             />
+
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className="form-select"
+            >
+              <option value="All">All Status</option>
+              <option value="active">Active</option>
+              <option value="suspended">Suspended</option>
+            </select>
           </div>
 
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            style={{
-              padding: '10px 14px',
-              borderRadius: '10px',
-              border: '1px solid #cbd5e1',
-              background: '#ffffff',
-              color: '#0f172a',
-              fontSize: '13px',
-              fontWeight: '500',
-              outline: 'none',
-              cursor: 'pointer'
+          <button 
+            onClick={() => {
+              handleCloseModal();
+              setShowAddModal(true);
             }}
-          >
-            <option value="All">All Status</option>
-            <option value="active">Active</option>
-            <option value="suspended">Suspended</option>
-          </select>
+            className="btn btn-primary">
+            + Add Delivery Partner
+          </button>
         </div>
       </div>
 
       {/* Add / Edit Partner Modal */}
       {showAddModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: '#ffffff', padding: '28px', borderRadius: '16px', width: '90%', maxWidth: '620px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)', border: '1px solid #e2e8f0' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px' }}>
-              <h2 style={{ margin: 0, fontSize: '20px', color: '#0f172a', fontWeight: '700' }}>
-                {isEditing ? 'Edit Delivery Partner' : 'Add New Delivery Partner'}
-              </h2>
-              <button onClick={handleCloseModal} style={{ background: 'transparent', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#64748b' }}>&times;</button>
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '640px' }}>
+            <div className="modal-header">
+              <h3>{isEditing ? 'Edit Delivery Partner' : 'Add New Delivery Partner'}</h3>
+              <button onClick={handleCloseModal} style={{ fontSize: '1.5rem', color: 'var(--text-secondary)' }}>&times;</button>
             </div>
-            <form onSubmit={handleAddSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <label style={{ fontSize: '12px', fontWeight: '600', color: '#475569' }}>Full Name *</label>
-                  <input required name="name" value={formData.name} onChange={handleInputChange} placeholder="e.g. Rahul Kumar" style={inputStyle} />
+            <form onSubmit={handleAddSubmit}>
+              <div className="modal-body">
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div className="form-group">
+                    <label className="form-label">Full Name *</label>
+                    <input required name="name" value={formData.name} onChange={handleInputChange} placeholder="e.g. Rahul Kumar" className="form-input" />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Phone Number (10 Digits) *</label>
+                    <input
+                      required
+                      type="tel"
+                      inputMode="numeric"
+                      maxLength={10}
+                      pattern="[0-9]{10}"
+                      title="Please enter a valid 10-digit phone number"
+                      name="mobileNumber"
+                      value={formData.mobileNumber}
+                      onChange={handleInputChange}
+                      placeholder="e.g. 9876543210"
+                      className="form-input"
+                    />
+                  </div>
+                  {!isEditing && (
+                    <>
+                      <div className="form-group">
+                        <label className="form-label">Email Address *</label>
+                        <input required type="email" name="email" value={formData.email} onChange={handleInputChange} placeholder="e.g. partner@example.com" className="form-input" />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Password *</label>
+                        <input required type="password" name="password" value={formData.password} onChange={handleInputChange} placeholder="••••••••" className="form-input" />
+                      </div>
+                    </>
+                  )}
+                  <div className="form-group">
+                    <label className="form-label">Vehicle Number</label>
+                    <input name="vehicleNumber" value={formData.vehicleNumber} onChange={handleInputChange} placeholder="e.g. KL-07-AB-1234" className="form-input" />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Location *</label>
+                    <select required name="location" value={formData.location} onChange={handleInputChange} className="form-select">
+                      <option value="" disabled>Select Location</option>
+                      {keralaPlaces.map((place) => (
+                        <option key={place} value={place}>{place}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Landmark *</label>
+                    <input required name="landmark" value={formData.landmark} onChange={handleInputChange} placeholder="e.g. Near Bus Stand" className="form-input" />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Pincode (6 Digits) *</label>
+                    <input
+                      required
+                      type="tel"
+                      inputMode="numeric"
+                      maxLength={6}
+                      pattern="[0-9]{6}"
+                      name="pincode"
+                      value={formData.pincode}
+                      onChange={handleInputChange}
+                      placeholder="e.g. 682001"
+                      className="form-input"
+                    />
+                  </div>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <label style={{ fontSize: '12px', fontWeight: '600', color: '#475569' }}>Phone Number (10 Digits) *</label>
-                  <input
-                    required
-                    type="tel"
-                    inputMode="numeric"
-                    maxLength={10}
-                    pattern="[0-9]{10}"
-                    title="Please enter a valid 10-digit phone number"
-                    name="mobileNumber"
-                    value={formData.mobileNumber}
-                    onChange={handleInputChange}
-                    placeholder="e.g. 9876543210"
-                    style={inputStyle}
-                  />
-                </div>
-                {!isEditing && (
-                  <>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      <label style={{ fontSize: '12px', fontWeight: '600', color: '#475569' }}>Email Address *</label>
-                      <input required type="email" name="email" value={formData.email} onChange={handleInputChange} placeholder="e.g. partner@example.com" style={inputStyle} />
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      <label style={{ fontSize: '12px', fontWeight: '600', color: '#475569' }}>Password *</label>
-                      <input required type="password" name="password" value={formData.password} onChange={handleInputChange} placeholder="••••••••" style={inputStyle} />
-                    </div>
-                  </>
-                )}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <label style={{ fontSize: '12px', fontWeight: '600', color: '#475569' }}>Vehicle Number</label>
-                  <input name="vehicleNumber" value={formData.vehicleNumber} onChange={handleInputChange} placeholder="e.g. KL-07-AB-1234" style={inputStyle} />
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <label style={{ fontSize: '12px', fontWeight: '600', color: '#475569' }}>Location *</label>
-                  <select required name="location" value={formData.location} onChange={handleInputChange} style={inputStyle}>
-                    <option value="" disabled>Select Location</option>
-                    {keralaPlaces.map((place) => (
-                      <option key={place} value={place}>{place}</option>
-                    ))}
-                  </select>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <label style={{ fontSize: '12px', fontWeight: '600', color: '#475569' }}>Landmark *</label>
-                  <input required name="landmark" value={formData.landmark} onChange={handleInputChange} placeholder="e.g. Near Bus Stand" style={inputStyle} />
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <label style={{ fontSize: '12px', fontWeight: '600', color: '#475569' }}>Pincode (6 Digits) *</label>
-                  <input
-                    required
-                    type="tel"
-                    inputMode="numeric"
-                    maxLength={6}
-                    pattern="[0-9]{6}"
-                    name="pincode"
-                    value={formData.pincode}
-                    onChange={handleInputChange}
-                    placeholder="e.g. 682001"
-                    style={inputStyle}
-                  />
+                <div className="form-group">
+                  <label className="form-label">Full Address *</label>
+                  <textarea required name="address" value={formData.address} onChange={handleInputChange} placeholder="Enter complete home address..." className="form-input" />
                 </div>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '12px', fontWeight: '600', color: '#475569' }}>Full Address *</label>
-                <textarea required name="address" value={formData.address} onChange={handleInputChange} placeholder="Enter complete home address..." style={{ ...inputStyle, minHeight: '70px', resize: 'vertical' }} />
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '12px', borderTop: '1px solid #f1f5f9', paddingTop: '16px' }}>
-                <button type="button" onClick={handleCloseModal} style={{ padding: '10px 20px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#ffffff', color: '#475569', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>Cancel</button>
-                <button type="submit" disabled={addingUser} style={{ padding: '10px 20px', borderRadius: '8px', border: 'none', background: addingUser ? '#94a3b8' : '#0284c7', color: '#ffffff', cursor: addingUser ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '14px' }}>
+              <div className="modal-footer">
+                <button type="button" onClick={handleCloseModal} className="btn btn-secondary">Cancel</button>
+                <button type="submit" disabled={addingUser} className="btn btn-primary">
                   {addingUser ? 'Saving...' : isEditing ? 'Save Changes' : 'Add Partner'}
                 </button>
               </div>
@@ -456,99 +431,97 @@ const DeliveryBoys = () => {
 
       {/* Assign / Manage Shops Modal */}
       {showAssignModal && selectedPartnerForShops && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: '#ffffff', padding: '28px', borderRadius: '16px', width: '90%', maxWidth: '580px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)', border: '1px solid #e2e8f0' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px' }}>
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '580px' }}>
+            <div className="modal-header">
               <div>
-                <h2 style={{ margin: 0, fontSize: '18px', color: '#0f172a', fontWeight: '700' }}>
-                  Assign Shops to {selectedPartnerForShops.name || 'Partner'}
-                </h2>
-                <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#64748b' }}>
+                <h3>Assign Shops to {selectedPartnerForShops.name || 'Partner'}</h3>
+                <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
                   Check the shops this delivery partner is authorized to deliver orders from.
                 </p>
               </div>
-              <button onClick={() => setShowAssignModal(false)} style={{ background: 'transparent', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#64748b' }}>&times;</button>
+              <button onClick={() => setShowAssignModal(false)} style={{ fontSize: '1.5rem', color: 'var(--text-secondary)' }}>&times;</button>
             </div>
 
-            {selectedPartnerForShops.requestedShopNames?.length > 0 && (
-              <div style={{ padding: '10px 14px', background: '#fef3c7', borderRadius: '8px', border: '1px solid #fde68a', marginBottom: '16px', fontSize: '12.5px', color: '#92400e' }}>
-                <strong>Requested by Partner:</strong> {selectedPartnerForShops.requestedShopNames.join(', ')}
-              </div>
-            )}
-
-            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px', paddingRight: '4px', marginBottom: '16px' }}>
-              {availableShops.length === 0 ? (
-                <div style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>
-                  No registered shops found.
+            <div className="modal-body">
+              {selectedPartnerForShops.requestedShopNames?.length > 0 && (
+                <div style={{ padding: '0.75rem 1rem', background: 'var(--warning-bg)', color: 'var(--warning-text)', borderRadius: 'var(--radius-md)', fontSize: '0.85rem', fontWeight: '500' }}>
+                  <strong>Requested by Partner:</strong> {selectedPartnerForShops.requestedShopNames.join(', ')}
                 </div>
-              ) : (
-                availableShops.map(shop => {
-                  const isChecked = selectedShopIds.includes(shop.id);
-                  const isRequested = (selectedPartnerForShops.requestedShopIds || []).includes(shop.id);
-
-                  return (
-                    <label 
-                      key={shop.id}
-                      style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: '12px', 
-                        padding: '12px 14px', 
-                        borderRadius: '10px', 
-                        border: isChecked ? '1.5px solid #0284c7' : '1px solid #e2e8f0', 
-                        background: isChecked ? '#f0f9ff' : '#ffffff',
-                        cursor: 'pointer' 
-                      }}>
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedShopIds(prev => [...prev, shop.id]);
-                          } else {
-                            setSelectedShopIds(prev => prev.filter(id => id !== shop.id));
-                          }
-                        }}
-                        style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#0284c7' }}
-                      />
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ fontWeight: '600', color: '#0f172a', fontSize: '14px' }}>{shop.name}</span>
-                          {isRequested && (
-                            <span style={{ fontSize: '11px', background: '#fef3c7', color: '#b45309', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>
-                              Requested
-                            </span>
-                          )}
-                        </div>
-                        <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
-                          {shop.location}
-                        </div>
-                      </div>
-                    </label>
-                  );
-                })
               )}
+
+              <div style={{ maxHeight: '320px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {availableShops.length === 0 ? (
+                  <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                    No registered shops found.
+                  </div>
+                ) : (
+                  availableShops.map(shop => {
+                    const isChecked = selectedShopIds.includes(shop.id);
+                    const isRequested = (selectedPartnerForShops.requestedShopIds || []).includes(shop.id);
+
+                    return (
+                      <label 
+                        key={shop.id}
+                        style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '0.75rem', 
+                          padding: '0.75rem 1rem', 
+                          borderRadius: 'var(--radius-md)', 
+                          border: isChecked ? '1.5px solid var(--primary)' : '1px solid var(--border-light)', 
+                          background: isChecked ? 'var(--primary-light)' : 'var(--bg-surface)',
+                          cursor: 'pointer' 
+                        }}>
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedShopIds(prev => [...prev, shop.id]);
+                            } else {
+                              setSelectedShopIds(prev => prev.filter(id => id !== shop.id));
+                            }
+                          }}
+                          style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: 'var(--primary)' }}
+                        />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <span style={{ fontWeight: '600', color: 'var(--text-primary)', fontSize: '0.9rem' }}>{shop.name}</span>
+                            {isRequested && (
+                              <span className="badge badge-warning" style={{ fontSize: '0.7rem' }}>
+                                Requested
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                            {shop.location}
+                          </div>
+                        </div>
+                      </label>
+                    );
+                  })
+                )}
+              </div>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '16px' }}>
-              <span style={{ fontSize: '13px', color: '#64748b', fontWeight: '500' }}>
+            <div className="modal-footer">
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginRight: 'auto' }}>
                 {selectedShopIds.length} shop(s) selected
               </span>
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <button type="button" onClick={() => setShowAssignModal(false)} style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#ffffff', color: '#475569', cursor: 'pointer', fontWeight: '600', fontSize: '13px' }}>
-                  Cancel
-                </button>
-                <button type="button" onClick={handleSaveAssignedShops} disabled={assigningShops} style={{ padding: '8px 18px', borderRadius: '8px', border: 'none', background: assigningShops ? '#94a3b8' : '#0284c7', color: '#ffffff', cursor: assigningShops ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '13px' }}>
-                  {assigningShops ? 'Saving...' : 'Save Assignments'}
-                </button>
-              </div>
+              <button type="button" onClick={() => setShowAssignModal(false)} className="btn btn-secondary">
+                Cancel
+              </button>
+              <button type="button" onClick={handleSaveAssignedShops} disabled={assigningShops} className="btn btn-primary">
+                {assigningShops ? 'Saving...' : 'Save Assignments'}
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      <div className="custom-table-wrapper">
-        <table className="custom-table">
+      <div className="table-container">
+        <table className="table">
           <thead>
             <tr>
               <th>Delivery Partner</th>
@@ -561,7 +534,7 @@ const DeliveryBoys = () => {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan="5" style={{ textAlign: 'center', padding: '30px', color: '#64748b' }}>
+                <td colSpan="5" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
                   Loading delivery partners...
                 </td>
               </tr>
@@ -574,62 +547,60 @@ const DeliveryBoys = () => {
                 return (
                   <tr key={partner.id}>
                     <td>
-                      <div className="customer-cell">
-                        <div className="customer-avatar" style={{ background: '#ffa502', color: '#fff' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <div style={{
+                          width: '36px', height: '36px', borderRadius: '50%',
+                          backgroundColor: '#fef3c7', color: '#d97706',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontWeight: '700', fontSize: '0.875rem'
+                        }}>
                           {(partner.name || partner.email || 'D').charAt(0).toUpperCase()}
                         </div>
                         <div>
-                          <div style={{ fontWeight: '600', color: '#0f172a' }}>
+                          <div style={{ fontWeight: '600', color: 'var(--text-primary)' }}>
                             {partner.name || 'Delivery Rider'}
                           </div>
-                          <div style={{ fontSize: '12px', color: '#64748b' }}>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
                             {partner.vehicleNumber || 'Motorcycle'}
                           </div>
                         </div>
                       </div>
                     </td>
                     <td>
-                      <div style={{ fontSize: '13px', color: '#334155', fontWeight: '500' }}>
+                      <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: '500' }}>
                         {partner.email || 'No Email'}
                       </div>
-                      <div style={{ fontSize: '12px', color: '#64748b' }}>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
                         {partner.mobileNumber ? `+91 ${partner.mobileNumber}` : 'No Phone'}
                       </div>
                     </td>
                     <td>
                       <div>
                         {assignedCount > 0 ? (
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', maxWidth: '220px' }}>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', maxWidth: '220px' }}>
                             {partner.assignedShopNames.map((shopName, idx) => (
-                              <span key={idx} style={{ fontSize: '11px', background: '#dcfce7', color: '#15803d', padding: '2px 7px', borderRadius: '6px', fontWeight: '600' }}>
+                              <span key={idx} className="badge badge-success" style={{ fontSize: '0.7rem' }}>
                                 {shopName}
                               </span>
                             ))}
                           </div>
                         ) : (
-                          <span style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic' }}>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
                             No stores assigned
                           </span>
                         )}
 
                         {requestedCount > 0 && (
-                          <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span style={{ fontSize: '11px', background: '#fef3c7', color: '#b45309', padding: '2px 6px', borderRadius: '4px', fontWeight: '600' }}>
+                          <div style={{ marginTop: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                            <span className="badge badge-warning" style={{ fontSize: '0.7rem' }}>
                               Requested: {partner.requestedShopNames.join(', ')}
                             </span>
                             <button
                               onClick={() => handleQuickApproveRequests(partner)}
                               disabled={actionLoading === partner.id}
-                              style={{
-                                padding: '2px 6px',
-                                fontSize: '10px',
-                                background: '#22c55e',
-                                color: '#fff',
-                                border: 'none',
-                                borderRadius: '4px',
-                                cursor: 'pointer',
-                                fontWeight: 'bold'
-                              }}>
+                              className="btn btn-success btn-sm"
+                              style={{ padding: '0.15rem 0.4rem', fontSize: '0.7rem' }}
+                            >
                               Approve
                             </button>
                           </div>
@@ -637,39 +608,21 @@ const DeliveryBoys = () => {
                       </div>
                     </td>
                     <td>
-                      <span className={`badge ${currentStatus === 'suspended' ? 'suspended' : 'active'}`}>
+                      <span className={`badge ${currentStatus === 'suspended' ? 'badge-danger' : 'badge-success'}`}>
                         {currentStatus === 'suspended' ? 'Suspended' : 'Active'}
                       </span>
                     </td>
                     <td>
-                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
                         <button
                           onClick={() => handleOpenAssignModal(partner)}
-                          style={{
-                            padding: '6px 10px',
-                            borderRadius: '6px',
-                            border: '1px solid #0284c7',
-                            background: '#f0f9ff',
-                            color: '#0284c7',
-                            fontSize: '12px',
-                            fontWeight: '600',
-                            cursor: 'pointer'
-                          }}
+                          className="btn btn-secondary btn-sm"
                         >
                           Assign Shops
                         </button>
                         <button
                           onClick={() => handleEditClick(partner)}
-                          style={{
-                            padding: '6px 10px',
-                            borderRadius: '6px',
-                            border: '1px solid #cbd5e1',
-                            background: '#ffffff',
-                            color: '#0f172a',
-                            fontSize: '12px',
-                            fontWeight: '600',
-                            cursor: 'pointer'
-                          }}
+                          className="btn btn-secondary btn-sm"
                         >
                           Edit
                         </button>
@@ -677,16 +630,7 @@ const DeliveryBoys = () => {
                           <button
                             onClick={() => handleUpdateStatus(partner.id, 'active')}
                             disabled={actionLoading === partner.id}
-                            style={{
-                              padding: '6px 10px',
-                              borderRadius: '6px',
-                              border: 'none',
-                              background: '#2ed573',
-                              color: '#fff',
-                              fontSize: '12px',
-                              fontWeight: '600',
-                              cursor: 'pointer'
-                            }}
+                            className="btn btn-success btn-sm"
                           >
                             Activate
                           </button>
@@ -694,16 +638,7 @@ const DeliveryBoys = () => {
                           <button
                             onClick={() => handleUpdateStatus(partner.id, 'suspended')}
                             disabled={actionLoading === partner.id}
-                            style={{
-                              padding: '6px 10px',
-                              borderRadius: '6px',
-                              border: '1px solid #ff4757',
-                              background: 'transparent',
-                              color: '#ff4757',
-                              fontSize: '12px',
-                              fontWeight: '600',
-                              cursor: 'pointer'
-                            }}
+                            className="btn btn-danger btn-sm"
                           >
                             Suspend
                           </button>
@@ -715,7 +650,7 @@ const DeliveryBoys = () => {
               })
             ) : (
               <tr>
-                <td colSpan="5" style={{ textAlign: 'center', padding: '30px', color: '#64748b' }}>
+                <td colSpan="5" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
                   No delivery partners found matching filter.
                 </td>
               </tr>

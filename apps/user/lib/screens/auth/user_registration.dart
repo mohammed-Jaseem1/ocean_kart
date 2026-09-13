@@ -816,9 +816,10 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
                   ),
                   _buildTextField(
                     controller: _addressController,
-                    label: 'Delivery Address',
+                    label: 'Area / Landmark (optional)',
+                    hintText: 'e.g. Near Cochin University, Kalamassery',
                     icon: Icons.location_on_outlined,
-                    isRequired: true,
+                    isRequired: false,
                   ),
                   _buildTextField(
                     controller: _passwordController,

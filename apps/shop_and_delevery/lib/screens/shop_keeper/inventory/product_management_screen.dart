@@ -130,23 +130,43 @@ class _ProductManagementScreenState extends State<ProductManagementScreen> {
                       ),
                       child: ListTile(
                         contentPadding: const EdgeInsets.all(12),
-                        leading: Container(
-                          width: 50,
-                          height: 50,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(8),
-                            color: Colors.black.withValues(alpha: 0.05),
-                            image: data['imageUrl'] != null
-                                ? DecorationImage(
-                                    image: data['imageUrl'].startsWith('http')
-                                        ? NetworkImage(data['imageUrl']) as ImageProvider
-                                        : MemoryImage(base64Decode(data['imageUrl'])),
-                                    fit: BoxFit.cover,
-                                  )
-                                : null,
-                          ),
-                          child: data['imageUrl'] == null ? const Icon(Icons.image, color: Colors.grey) : null,
-                        ),
+                        leading: (() {
+                          final imagesList = (data['images'] as List?)?.map((e) => e.toString()).toList();
+                          final imgStr = (imagesList != null && imagesList.isNotEmpty)
+                              ? imagesList.first
+                              : (data['imageUrl']?.toString());
+
+                          if (imgStr == null || imgStr.isEmpty) {
+                            return Container(
+                              width: 50,
+                              height: 50,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(8),
+                                color: Colors.black.withValues(alpha: 0.05),
+                              ),
+                              child: const Icon(Icons.image, color: Colors.grey),
+                            );
+                          }
+
+                          ImageProvider imgProvider;
+                          if (imgStr.startsWith('http')) {
+                            imgProvider = NetworkImage(imgStr);
+                          } else if (imgStr.contains('base64,')) {
+                            final cleanBase64 = imgStr.split('base64,').last;
+                            imgProvider = MemoryImage(base64Decode(cleanBase64));
+                          } else {
+                            imgProvider = MemoryImage(base64Decode(imgStr));
+                          }
+
+                          return Container(
+                            width: 50,
+                            height: 50,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(8),
+                              image: DecorationImage(image: imgProvider, fit: BoxFit.cover),
+                            ),
+                          );
+                        })(),
                         title: Text(
                           displayName,
                           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: accentColor),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:geolocator/geolocator.dart';
 import 'dart:convert';
 import 'location_picker_screen.dart';
 
@@ -19,15 +20,17 @@ class CheckoutScreen extends StatefulWidget {
 }
 
 class _CheckoutScreenState extends State<CheckoutScreen> {
-  final _addressController = TextEditingController();
   final _phoneController = TextEditingController();
   bool _isLoading = false;
   bool _isLoadingItems = true;
 
   List<Map<String, dynamic>> _itemsToOrder = [];
   double _calculatedTotal = 0.0;
-  double? _deliveryLat;
-  double? _deliveryLon;
+
+  // Address management
+  List<Map<String, dynamic>> _savedAddresses = [];
+  Map<String, dynamic>? _selectedAddress; // {label, address, lat, lon, id}
+  bool _isLoadingAddresses = true;
 
   @override
   void initState() {
@@ -51,10 +54,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         if (data['phone'] != null) {
           _phoneController.text = data['phone'];
         }
-        if (data['address'] != null) {
-          _addressController.text = data['address'];
-        }
       }
+
+      // Fetch saved addresses from subcollection
+      await _loadSavedAddresses();
 
       // Fetch items
       List<Map<String, dynamic>> items = [];
@@ -99,6 +102,36 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
+  Future<void> _loadSavedAddresses() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('addresses')
+          .orderBy('createdAt', descending: false)
+          .get();
+
+      final addresses = snapshot.docs.map((doc) {
+        return {'id': doc.id, ...doc.data()};
+      }).toList();
+
+      setState(() {
+        _savedAddresses = addresses;
+        _isLoadingAddresses = false;
+        // Auto-select first address if available
+        if (addresses.isNotEmpty && _selectedAddress == null) {
+          _selectedAddress = addresses.first;
+        }
+      });
+    } catch (e) {
+      debugPrint('Error loading addresses: $e');
+      setState(() => _isLoadingAddresses = false);
+    }
+  }
+
   void _recalculateTotal() {
     double total = 0.0;
     for (var item in _itemsToOrder) {
@@ -138,13 +171,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   Future<void> _removeItem(int index) async {
     final item = _itemsToOrder[index];
-    
+
     setState(() {
       _itemsToOrder.removeAt(index);
       _recalculateTotal();
     });
 
-    // Also remove from Firestore cart if this is a cart checkout
     if (widget.directItems == null || widget.directItems!.isEmpty) {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null && item['productId'] != null) {
@@ -168,7 +200,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
-  Future<void> _showLocationPicker() async {
+  Future<void> _openMapAndAddAddress() async {
     final result = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
@@ -178,46 +210,387 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       },
     );
 
-    if (result != null) {
+    if (result != null && mounted) {
+      final double? lat = result['lat'] as double?;
+      final double? lon = result['lon'] as double?;
+      final String address = result['address'] as String? ?? '';
+
+      if (lat == null || lon == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Could not get GPS coordinates. Please try again on the map.'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+        return;
+      }
+
+      // Show label picker dialog
+      final label = await _showLabelPickerDialog();
+      if (label == null || !mounted) return;
+
+      // Save to Firestore
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      try {
+        final docRef = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('addresses')
+            .add({
+          'label': label,
+          'address': address,
+          'lat': lat,
+          'lon': lon,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+
+        final newAddress = {
+          'id': docRef.id,
+          'label': label,
+          'address': address,
+          'lat': lat,
+          'lon': lon,
+        };
+
+        setState(() {
+          _savedAddresses.add(newAddress);
+          _selectedAddress = newAddress;
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('$label address saved!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to save address: $e')),
+          );
+        }
+      }
+    }
+  }
+
+  Future<String?> _showLabelPickerDialog() async {
+    String selectedLabel = 'Home';
+    final customController = TextEditingController();
+
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20)),
+              title: const Text(
+                'Save Address As',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: ['Home', 'Work', 'Other'].map((label) {
+                      final isSelected = selectedLabel == label;
+                      return GestureDetector(
+                        onTap: () =>
+                            setDialogState(() => selectedLabel = label),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? const Color(0xFF00B4D8)
+                                : const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                label == 'Home'
+                                    ? Icons.home_outlined
+                                    : label == 'Work'
+                                        ? Icons.work_outline
+                                        : Icons.location_on_outlined,
+                                color: isSelected
+                                    ? Colors.white
+                                    : const Color(0xFF64748B),
+                                size: 18,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                label,
+                                style: TextStyle(
+                                  color: isSelected
+                                      ? Colors.white
+                                      : const Color(0xFF0F172A),
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  if (selectedLabel == 'Other') ...[
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: customController,
+                      decoration: InputDecoration(
+                        hintText: 'Enter a custom label...',
+                        hintStyle:
+                            TextStyle(color: Colors.grey.shade400, fontSize: 14),
+                        filled: true,
+                        fillColor: const Color(0xFFF8FAFC),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 12),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Cancel',
+                      style: TextStyle(color: Color(0xFF64748B))),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF00B4D8),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: () {
+                    final finalLabel = selectedLabel == 'Other' &&
+                            customController.text.trim().isNotEmpty
+                        ? customController.text.trim()
+                        : selectedLabel;
+                    Navigator.pop(ctx, finalLabel);
+                  },
+                  child: const Text('Save',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _deleteAddress(String addressId) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Delete Address',
+            style: TextStyle(fontWeight: FontWeight.bold)),
+        content: const Text('Remove this saved address?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete',
+                style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('addresses')
+          .doc(addressId)
+          .delete();
+
       setState(() {
-        _addressController.text = result['address'] as String;
-        _deliveryLat = result['lat'] as double?;
-        _deliveryLon = result['lon'] as double?;
+        _savedAddresses.removeWhere((a) => a['id'] == addressId);
+        if (_selectedAddress?['id'] == addressId) {
+          _selectedAddress =
+              _savedAddresses.isNotEmpty ? _savedAddresses.first : null;
+        }
       });
     }
   }
 
+  /// Returns true if delivery is allowed, false if blocked.
+  Future<bool> _validateDeliveryRadius() async {
+    if (_selectedAddress == null) return false;
+
+    final double? deliveryLat = _selectedAddress!['lat'] as double?;
+    final double? deliveryLon = _selectedAddress!['lon'] as double?;
+
+    // Require GPS coordinates on the address
+    if (deliveryLat == null || deliveryLon == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Please select your delivery address from the map for location verification.'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+      return false;
+    }
+
+    // Get the shopId from items
+    final String? shopId = _itemsToOrder.isNotEmpty
+        ? _itemsToOrder.first['shopId'] as String?
+        : null;
+
+    if (shopId == null || shopId.isEmpty) {
+      // No shopId to validate against — allow order
+      return true;
+    }
+
+    try {
+      final shopDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(shopId)
+          .get();
+
+      if (!shopDoc.exists) return true;
+
+      final shopData = shopDoc.data()!;
+      final double? shopLat = (shopData['latitude'] as num?)?.toDouble();
+      final double? shopLon = (shopData['longitude'] as num?)?.toDouble();
+      final double deliveryRadiusKm =
+          (shopData['deliveryRadiusKm'] as num?)?.toDouble() ?? 10.0;
+
+      // If shop has no GPS pin, skip radius check
+      if (shopLat == null || shopLon == null) return true;
+
+      final double distanceMeters = Geolocator.distanceBetween(
+        shopLat,
+        shopLon,
+        deliveryLat,
+        deliveryLon,
+      );
+      final double distanceKm = distanceMeters / 1000.0;
+
+      if (distanceKm > deliveryRadiusKm) {
+        if (mounted) {
+          await showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20)),
+              icon: const Icon(Icons.location_off_rounded,
+                  color: Colors.redAccent, size: 48),
+              title: const Text(
+                'Outside Delivery Area',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+              ),
+              content: Text(
+                'Sorry, we don\'t deliver to this location.\n\n'
+                'Your address is ${distanceKm.toStringAsFixed(1)} km away, '
+                'but our delivery limit is ${deliveryRadiusKm.toStringAsFixed(0)} km from the store.\n\n'
+                'Please select a closer address or contact the shop.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    fontSize: 14,
+                    color: Color(0xFF475569),
+                    height: 1.5),
+              ),
+              actions: [
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF00B4D8),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('OK, Change Address',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+        return false;
+      }
+    } catch (e) {
+      debugPrint('Error validating delivery radius: $e');
+      // On error, allow order to proceed
+    }
+
+    return true;
+  }
+
   Future<void> _placeOrder() async {
-    if (_addressController.text.trim().isEmpty ||
-        _phoneController.text.trim().isEmpty) {
+    if (_selectedAddress == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill delivery address and phone')),
+        const SnackBar(
+            content: Text('Please select or add a delivery address')),
+      );
+      return;
+    }
+
+    if (_phoneController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter your phone number')),
       );
       return;
     }
 
     if (_itemsToOrder.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('No items to order')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('No items to order')));
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
+
+    // Validate delivery radius before anything else
+    final bool canDeliver = await _validateDeliveryRadius();
+    if (!canDeliver) {
+      setState(() => _isLoading = false);
+      return;
+    }
 
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
 
-      // Save address and phone for future checkouts
+      // Save phone for future
       await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
         'phone': _phoneController.text.trim(),
-        'address': _addressController.text.trim(),
       }, SetOptions(merge: true));
 
-      // 1. Validate stock for all items before placing the order
+      // 1. Validate stock for all items
       for (var item in _itemsToOrder) {
         final String? shopId = item['shopId'];
         final String? productId = item['productId'];
@@ -236,10 +609,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text(
-                    '$name is no longer available.',
-                    style: const TextStyle(color: Colors.white),
-                  ),
+                  content: Text('$name is no longer available.',
+                      style: const TextStyle(color: Colors.white)),
                   backgroundColor: Colors.red,
                 ),
               );
@@ -268,7 +639,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         }
       }
 
-      // 1.5 Fetch user profile data
+      // 2. Fetch user profile data
       final userDoc = await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
@@ -278,7 +649,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           userData['name'] ?? user.displayName ?? 'Unknown Customer';
       final String customerEmail = userData['email'] ?? user.email ?? '';
 
-      // 2. Create Order
+      // 3. Create Order
       await FirebaseFirestore.instance.collection('orders').add({
         'userId': user.uid,
         'customerName': customerName,
@@ -286,16 +657,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         'shopId': _itemsToOrder.isNotEmpty ? _itemsToOrder.first['shopId'] : '',
         'items': _itemsToOrder,
         'totalAmount': _calculatedTotal,
-        'deliveryAddress': _addressController.text.trim(),
-        'deliveryLat': _deliveryLat,
-        'deliveryLon': _deliveryLon,
+        'deliveryAddress': _selectedAddress!['address'],
+        'deliveryLat': _selectedAddress!['lat'],
+        'deliveryLon': _selectedAddress!['lon'],
+        'deliveryAddressLabel': _selectedAddress!['label'] ?? '',
         'phone': _phoneController.text.trim(),
         'paymentMethod': 'COD',
         'status': 'pending',
         'createdAt': FieldValue.serverTimestamp(),
       });
 
-      // 3. Reduce inventory stock and update status
+      // 4. Reduce inventory stock
       for (var item in _itemsToOrder) {
         final String? shopId = item['shopId'];
         final String? productId = item['productId'];
@@ -312,14 +684,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               .doc(productId);
 
           try {
-            await FirebaseFirestore.instance.runTransaction((
-              transaction,
-            ) async {
+            await FirebaseFirestore.instance
+                .runTransaction((transaction) async {
               final snapshot = await transaction.get(productRef);
               if (snapshot.exists) {
                 final currentStock =
                     (snapshot.data()?['stockQuantity'] as num?)?.toDouble() ??
-                    0.0;
+                        0.0;
                 final newStock = currentStock - qty;
                 transaction.update(productRef, {
                   'stockQuantity': newStock < 0 ? 0.0 : newStock,
@@ -333,7 +704,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         }
       }
 
-      // 3. Clear Cart ONLY if it wasn't a direct buy
+      // 5. Clear Cart if not direct buy
       if (widget.directItems == null || widget.directItems!.isEmpty) {
         final cartSnapshot = await FirebaseFirestore.instance
             .collection('users')
@@ -349,28 +720,22 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Order placed successfully!')),
         );
-        Navigator.of(
-          context,
-        ).popUntil((route) => route.isFirst); // Go back to Home
+        Navigator.of(context).popUntil((route) => route.isFirst);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error placing order: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Error placing order: $e')));
       }
     } finally {
       if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+        setState(() => _isLoading = false);
       }
     }
   }
 
   @override
   void dispose() {
-    _addressController.dispose();
     _phoneController.dispose();
     super.dispose();
   }
@@ -397,11 +762,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Order Summary Card
+                  // ── Order Summary Card ──────────────────────────────
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(24),
@@ -414,7 +780,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF00B4D8).withValues(alpha: 0.3),
+                          color:
+                              const Color(0xFF00B4D8).withValues(alpha: 0.3),
                           blurRadius: 15,
                           offset: const Offset(0, 8),
                         ),
@@ -455,6 +822,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   ),
                   const SizedBox(height: 32),
 
+                  // ── Items & Preferences ────────────────────────────
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -467,10 +835,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         ),
                       ),
                       TextButton.icon(
-                        onPressed: () => Navigator.of(
-                          context,
-                        ).popUntil((route) => route.isFirst),
-                        icon: const Icon(Icons.add, color: Color(0xFF00B4D8)),
+                        onPressed: () => Navigator.of(context)
+                            .popUntil((route) => route.isFirst),
+                        icon: const Icon(Icons.add,
+                            color: Color(0xFF00B4D8)),
                         label: const Text(
                           'Add More',
                           style: TextStyle(
@@ -490,8 +858,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     itemCount: _itemsToOrder.length,
                     itemBuilder: (context, index) {
                       final item = _itemsToOrder[index];
-                      final qty = (item['quantity'] as num).toDouble();
-                      final price = (item['pricePerKg'] as num).toDouble();
+                      final qty =
+                          (item['quantity'] as num).toDouble();
+                      final price =
+                          (item['pricePerKg'] as num).toDouble();
                       final imageUrl = item['imageUrl'];
 
                       return Padding(
@@ -502,200 +872,202 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                               width: double.infinity,
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.03),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black
+                                        .withValues(alpha: 0.03),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Container(
+                                        width: 50,
+                                        height: 50,
+                                        decoration: BoxDecoration(
+                                          color: Colors.grey.shade100,
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                          image: imageUrl != null &&
+                                                  imageUrl.isNotEmpty
+                                              ? DecorationImage(
+                                                  image: imageUrl
+                                                          .startsWith('http')
+                                                      ? NetworkImage(
+                                                              imageUrl)
+                                                          as ImageProvider
+                                                      : MemoryImage(
+                                                          base64Decode(
+                                                              imageUrl),
+                                                        ),
+                                                  fit: BoxFit.cover,
+                                                )
+                                              : null,
+                                        ),
+                                        child: imageUrl == null
+                                            ? const Icon(Icons.image,
+                                                color: Colors.grey)
+                                            : null,
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              item['name'],
+                                              style: const TextStyle(
+                                                fontWeight:
+                                                    FontWeight.bold,
+                                                fontSize: 15,
+                                              ),
+                                            ),
+                                            Text(
+                                              '₹${price.toStringAsFixed(0)}/kg',
+                                              style: const TextStyle(
+                                                color: Colors.blueAccent,
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      // Quantity Selector
+                                      Row(
+                                        children: [
+                                          IconButton(
+                                            icon: const Icon(
+                                              Icons.remove_circle_outline,
+                                              color: Colors.redAccent,
+                                              size: 20,
+                                            ),
+                                            onPressed: () =>
+                                                _updateQuantity(
+                                                    index, -0.5),
+                                            padding: EdgeInsets.zero,
+                                            constraints:
+                                                const BoxConstraints(),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            '${qty.toStringAsFixed(1)} kg',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 14,
+                                              color: Colors.black87,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          IconButton(
+                                            icon: const Icon(
+                                              Icons.add_circle_outline,
+                                              color: Colors.green,
+                                              size: 20,
+                                            ),
+                                            onPressed: () =>
+                                                _updateQuantity(
+                                                    index, 0.5),
+                                            padding: EdgeInsets.zero,
+                                            constraints:
+                                                const BoxConstraints(),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                  const Divider(height: 24),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            const Text(
+                                              'Preparation Options (Select multiple):',
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                color: Colors.black54,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 8),
+                                            Wrap(
+                                              spacing: 8,
+                                              runSpacing: 8,
+                                              children: [
+                                                'Cleaning',
+                                                'Cut for Curry',
+                                                'Cut for Fry',
+                                              ].map((option) {
+                                                final isSelected = ((item[
+                                                                'preparation'] ??
+                                                            []) as List)
+                                                    .contains(option);
+                                                return FilterChip(
+                                                  label: Text(option,
+                                                      style:
+                                                          const TextStyle(
+                                                              fontSize:
+                                                                  12)),
+                                                  selected: isSelected,
+                                                  onSelected: (selected) =>
+                                                      _updatePreparation(
+                                                          index,
+                                                          option,
+                                                          selected),
+                                                  selectedColor: const Color(
+                                                          0xFF00B4D8)
+                                                      .withValues(
+                                                          alpha: 0.2),
+                                                  checkmarkColor:
+                                                      const Color(
+                                                          0xFF00B4D8),
+                                                );
+                                              }).toList(),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Positioned(
+                              top: 0,
+                              right: 0,
+                              child: IconButton(
+                                icon: const Icon(Icons.cancel,
+                                    color: Colors.grey, size: 24),
+                                onPressed: () => _removeItem(index),
+                              ),
                             ),
                           ],
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  width: 50,
-                                  height: 50,
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey.shade100,
-                                    borderRadius: BorderRadius.circular(8),
-                                    image:
-                                        imageUrl != null && imageUrl.isNotEmpty
-                                        ? DecorationImage(
-                                            image: imageUrl.startsWith('http')
-                                                ? NetworkImage(imageUrl)
-                                                      as ImageProvider
-                                                : MemoryImage(
-                                                    base64Decode(imageUrl),
-                                                  ),
-                                            fit: BoxFit.cover,
-                                          )
-                                        : null,
-                                  ),
-                                  child: imageUrl == null
-                                      ? const Icon(
-                                          Icons.image,
-                                          color: Colors.grey,
-                                        )
-                                      : null,
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        item['name'],
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 15,
-                                        ),
-                                      ),
-                                      Text(
-                                        '₹${price.toStringAsFixed(0)}/kg',
-                                        style: const TextStyle(
-                                          color: Colors.blueAccent,
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                // Quantity Selector
-                                Row(
-                                  children: [
-                                    IconButton(
-                                      icon: const Icon(
-                                        Icons.remove_circle_outline,
-                                        color: Colors.redAccent,
-                                        size: 20,
-                                      ),
-                                      onPressed: () =>
-                                          _updateQuantity(index, -0.5),
-                                      padding: EdgeInsets.zero,
-                                      constraints: const BoxConstraints(),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      '${qty.toStringAsFixed(1)} kg',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14,
-                                        color: Colors.black87,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    IconButton(
-                                      icon: const Icon(
-                                        Icons.add_circle_outline,
-                                        color: Colors.green,
-                                        size: 20,
-                                      ),
-                                      onPressed: () =>
-                                          _updateQuantity(index, 0.5),
-                                      padding: EdgeInsets.zero,
-                                      constraints: const BoxConstraints(),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                            const Divider(height: 24),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      const Text(
-                                        'Preparation Options (Select multiple):',
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          color: Colors.black54,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      Wrap(
-                                        spacing: 8,
-                                        runSpacing: 8,
-                                        children:
-                                            [
-                                              'Cleaning',
-                                              'Cut for Curry',
-                                              'Cut for Fry',
-                                            ].map((option) {
-                                              final isSelected =
-                                                  ((item['preparation'] ?? [])
-                                                          as List)
-                                                      .contains(option);
-                                              return FilterChip(
-                                                label: Text(
-                                                  option,
-                                                  style: const TextStyle(
-                                                    fontSize: 12,
-                                                  ),
-                                                ),
-                                                selected: isSelected,
-                                                onSelected: (selected) =>
-                                                    _updatePreparation(
-                                                      index,
-                                                      option,
-                                                      selected,
-                                                    ),
-                                                selectedColor: const Color(
-                                                  0xFF00B4D8,
-                                                ).withValues(alpha: 0.2),
-                                                checkmarkColor: const Color(
-                                                  0xFF00B4D8,
-                                                ),
-                                              );
-                                            }).toList(),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ), // closes Row
-                          ], // closes main Column children
-                        ), // closes main Column
-                      ), // closes Container
-                      Positioned(
-                        top: 0,
-                        right: 0,
-                        child: IconButton(
-                          icon: const Icon(
-                            Icons.cancel,
-                            color: Colors.grey,
-                            size: 24,
-                          ),
-                          onPressed: () => _removeItem(index),
-                        ),
-                      ),
-                    ], // closes Stack children
-                  ), // closes Stack
-                ); // closes Padding
-              },
+                      );
+                    },
                   ),
 
                   const SizedBox(height: 24),
 
+                  // ── Delivery Address Section ───────────────────────
                   const Row(
                     children: [
-                      Icon(
-                        Icons.location_on,
-                        color: Color(0xFF0F172A),
-                        size: 22,
-                      ),
+                      Icon(Icons.location_on,
+                          color: Color(0xFF0F172A), size: 22),
                       SizedBox(width: 8),
                       Text(
-                        'Delivery Details',
+                        'Delivery Address',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w800,
@@ -704,77 +1076,224 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
 
-                  // Map Button & Address Input
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.03),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      children: [
-                        InkWell(
-                          onTap: _showLocationPicker,
-                          child: Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(16),
-                            decoration: const BoxDecoration(
-                              color: Color(0xFFE3F2FD),
-                              borderRadius: BorderRadius.vertical(
-                                top: Radius.circular(16),
-                              ),
-                            ),
-                            child: const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.map, color: Color(0xFF00B4D8)),
-                                SizedBox(width: 8),
-                                Text(
-                                  'Select Location on Map',
-                                  style: TextStyle(
-                                    color: Color(0xFF00B4D8),
-                                    fontWeight: FontWeight.bold,
+                  _isLoadingAddresses
+                      ? const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(16),
+                            child: CircularProgressIndicator(),
+                          ),
+                        )
+                      : Column(
+                          children: [
+                            // Saved address cards
+                            if (_savedAddresses.isEmpty)
+                              Container(
+                                padding: const EdgeInsets.all(20),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                      color: const Color(0xFFE2E8F0)),
+                                ),
+                                child: Center(
+                                  child: Column(
+                                    children: [
+                                      Icon(Icons.location_off_outlined,
+                                          size: 40,
+                                          color: Colors.grey.shade400),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'No saved addresses yet',
+                                        style: TextStyle(
+                                            color: Colors.grey.shade600,
+                                            fontWeight: FontWeight.w600),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'Tap below to add your delivery location',
+                                        style: TextStyle(
+                                            color: Colors.grey.shade400,
+                                            fontSize: 12),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        TextField(
-                          controller: _addressController,
-                          maxLines: 2,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            color: Colors.black87,
-                          ),
-                          decoration: InputDecoration(
-                            hintText: 'Enter complete address or select on map',
-                            hintStyle: TextStyle(color: Colors.grey.shade400),
-                            filled: true,
-                            fillColor: Colors.white,
-                            contentPadding: const EdgeInsets.all(16),
-                            border: const OutlineInputBorder(
-                              borderRadius: BorderRadius.vertical(
-                                bottom: Radius.circular(16),
+                              )
+                            else
+                              ListView.builder(
+                                shrinkWrap: true,
+                                physics:
+                                    const NeverScrollableScrollPhysics(),
+                                itemCount: _savedAddresses.length,
+                                itemBuilder: (context, index) {
+                                  final addr = _savedAddresses[index];
+                                  final isSelected = _selectedAddress !=
+                                          null &&
+                                      _selectedAddress!['id'] == addr['id'];
+                                  final label =
+                                      addr['label'] as String? ?? 'Address';
+
+                                  IconData labelIcon = Icons.location_on;
+                                  if (label == 'Home') {
+                                    labelIcon = Icons.home_rounded;
+                                  } else if (label == 'Work') {
+                                    labelIcon = Icons.work_rounded;
+                                  }
+
+                                  return GestureDetector(
+                                    onTap: () => setState(
+                                        () => _selectedAddress = addr),
+                                    child: Container(
+                                      margin: const EdgeInsets.only(
+                                          bottom: 10),
+                                      padding: const EdgeInsets.all(14),
+                                      decoration: BoxDecoration(
+                                        color: isSelected
+                                            ? const Color(0xFF00B4D8)
+                                                .withValues(alpha: 0.07)
+                                            : Colors.white,
+                                        borderRadius:
+                                            BorderRadius.circular(14),
+                                        border: Border.all(
+                                          color: isSelected
+                                              ? const Color(0xFF00B4D8)
+                                              : const Color(0xFFE2E8F0),
+                                          width: isSelected ? 2 : 1,
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black
+                                                .withValues(alpha: 0.03),
+                                            blurRadius: 8,
+                                            offset: const Offset(0, 2),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.all(9),
+                                            decoration: BoxDecoration(
+                                              color: isSelected
+                                                  ? const Color(0xFF00B4D8)
+                                                      .withValues(alpha: 0.15)
+                                                  : const Color(0xFFF1F5F9),
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                            ),
+                                            child: Icon(
+                                              labelIcon,
+                                              color: isSelected
+                                                  ? const Color(0xFF00B4D8)
+                                                  : const Color(0xFF64748B),
+                                              size: 20,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  label,
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.w800,
+                                                    fontSize: 14,
+                                                    color: isSelected
+                                                        ? const Color(
+                                                            0xFF00B4D8)
+                                                        : const Color(
+                                                            0xFF0F172A),
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 3),
+                                                Text(
+                                                  addr['address'] as String? ??
+                                                      '',
+                                                  maxLines: 2,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: Colors.grey.shade600,
+                                                    height: 1.3,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          if (isSelected)
+                                            const Icon(
+                                              Icons.check_circle_rounded,
+                                              color: Color(0xFF00B4D8),
+                                              size: 22,
+                                            )
+                                          else
+                                            IconButton(
+                                              icon: const Icon(
+                                                Icons.delete_outline_rounded,
+                                                color: Color(0xFFCBD5E1),
+                                                size: 20,
+                                              ),
+                                              onPressed: () =>
+                                                  _deleteAddress(
+                                                      addr['id'] as String),
+                                              padding: EdgeInsets.zero,
+                                              constraints:
+                                                  const BoxConstraints(),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
                               ),
-                              borderSide: BorderSide.none,
+
+                            const SizedBox(height: 10),
+
+                            // Add new address button
+                            InkWell(
+                              onTap: _openMapAndAddAddress,
+                              borderRadius: BorderRadius.circular(14),
+                              child: Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFE3F2FD),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                      color: const Color(0xFF00B4D8)
+                                          .withValues(alpha: 0.4)),
+                                ),
+                                child: const Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.add_location_alt_rounded,
+                                        color: Color(0xFF00B4D8), size: 20),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      'Add New Address from Map',
+                                      style: TextStyle(
+                                        color: Color(0xFF00B4D8),
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
-                          ),
+                          ],
                         ),
-                      ],
-                    ),
-                  ),
+
                   const SizedBox(height: 16),
 
-                  // Phone Input
+                  // ── Phone Input ────────────────────────────────────
                   Container(
                     decoration: BoxDecoration(
                       color: Colors.white,
@@ -791,12 +1310,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       controller: _phoneController,
                       keyboardType: TextInputType.phone,
                       style: const TextStyle(
-                        fontSize: 15,
-                        color: Colors.black87,
-                      ),
+                          fontSize: 15, color: Colors.black87),
                       decoration: InputDecoration(
                         hintText: 'Phone Number',
-                        hintStyle: TextStyle(color: Colors.grey.shade400),
+                        hintStyle:
+                            TextStyle(color: Colors.grey.shade400),
                         filled: true,
                         fillColor: Colors.white,
                         contentPadding: const EdgeInsets.all(16),
@@ -813,9 +1331,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   ),
                   const SizedBox(height: 32),
 
+                  // ── Payment Method ────────────────────────────────
                   const Row(
                     children: [
-                      Icon(Icons.payment, color: Color(0xFF0F172A), size: 22),
+                      Icon(Icons.payment,
+                          color: Color(0xFF0F172A), size: 22),
                       SizedBox(width: 8),
                       Text(
                         'Payment Method',
@@ -829,7 +1349,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Payment Option
                   Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
@@ -852,13 +1371,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF00B4D8).withValues(alpha: 0.1),
+                            color: const Color(0xFF00B4D8)
+                                .withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: const Icon(
-                            Icons.money,
-                            color: Color(0xFF00B4D8),
-                          ),
+                          child: const Icon(Icons.money,
+                              color: Color(0xFF00B4D8)),
                         ),
                         const SizedBox(width: 16),
                         const Expanded(
@@ -877,24 +1395,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                               Text(
                                 'Pay when you receive your order',
                                 style: TextStyle(
-                                  color: Colors.grey,
-                                  fontSize: 12,
-                                ),
+                                    color: Colors.grey, fontSize: 12),
                               ),
                             ],
                           ),
                         ),
-                        const Icon(
-                          Icons.check_circle,
-                          color: Color(0xFF00B4D8),
-                          size: 28,
-                        ),
+                        const Icon(Icons.check_circle,
+                            color: Color(0xFF00B4D8), size: 28),
                       ],
                     ),
                   ),
                   const SizedBox(height: 48),
 
-                  // Place Order Button
+                  // ── Place Order Button ─────────────────────────────
                   SizedBox(
                     width: double.infinity,
                     height: 60,

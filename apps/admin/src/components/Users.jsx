@@ -55,53 +55,40 @@ const Users = () => {
   });
 
   return (
-    <div className="table-card">
-      <div className="table-header" style={{ flexWrap: 'wrap', gap: '16px' }}>
+    <div className="card">
+      <div className="page-header" style={{ marginBottom: '1.5rem' }}>
         <div>
-          <h2>Registered App Users</h2>
-          <p style={{ color: '#64748b', fontSize: '13px', margin: '4px 0 0' }}>
+          <h2 className="page-title" style={{ fontSize: '1.5rem' }}>Registered App Users</h2>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginTop: '0.25rem' }}>
             View and manage all registered customer user accounts.
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          <div className="search-bar" style={{ maxWidth: '240px' }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
-            <input
-              type="text"
-              placeholder="Search user name or phone..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
+        <div className="toolbar" style={{ marginBottom: 0 }}>
+          <input
+            type="text"
+            className="form-input"
+            placeholder="Search user name or phone..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            style={{ width: '320px', maxWidth: '100%' }}
+          />
 
           <select
             value={filterRole}
             onChange={(e) => setFilterRole(e.target.value)}
-            style={{
-              padding: '10px 14px',
-              borderRadius: '10px',
-              border: '1px solid #cbd5e1',
-              background: '#ffffff',
-              color: '#0f172a',
-              fontSize: '13px',
-              fontWeight: '500',
-              outline: 'none',
-              cursor: 'pointer'
-            }}
+            className="form-select"
           >
             <option value="All">All Roles</option>
             <option value="customer">Customers</option>
-            <option value="shop_keeper">Shop Keepers</option>
+            <option value="shopkeeper">Shop Keepers</option>
             <option value="delivery_partner">Delivery Partners</option>
           </select>
         </div>
       </div>
 
-      <div className="custom-table-wrapper">
-        <table className="custom-table">
+      <div className="table-container">
+        <table className="table">
           <thead>
             <tr>
               <th>User Name</th>
@@ -114,7 +101,7 @@ const Users = () => {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan="5" style={{ textAlign: 'center', padding: '30px', color: '#64748b' }}>
+                <td colSpan="5" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
                   Loading users...
                 </td>
               </tr>
@@ -125,50 +112,45 @@ const Users = () => {
                 return (
                   <tr key={u.id}>
                     <td>
-                      <div className="customer-cell">
-                        <div className="customer-avatar" style={{ background: '#0288d1', color: '#fff' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <div style={{
+                          width: '36px', height: '36px', borderRadius: '50%',
+                          backgroundColor: 'var(--primary-light)', color: 'var(--primary)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontWeight: '700', fontSize: '0.875rem'
+                        }}>
                           {(u.name || u.email || 'U').charAt(0).toUpperCase()}
                         </div>
                         <div>
-                          <div style={{ fontWeight: '600', color: '#0f172a' }}>
+                          <div style={{ fontWeight: '600', color: 'var(--text-primary)' }}>
                             {u.name || 'OceanKart User'}
                           </div>
-
                         </div>
                       </div>
                     </td>
                     <td>
-                      <div style={{ fontSize: '13px', color: '#334155', fontWeight: '500' }}>
+                      <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: '500' }}>
                         {u.email || 'No Email'}
                       </div>
-                      <div style={{ fontSize: '12px', color: '#64748b' }}>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
                         {u.mobileNumber ? `+91 ${u.mobileNumber}` : 'No Phone'}
                       </div>
                     </td>
-                    <td style={{ fontSize: '13px', textTransform: 'capitalize', fontWeight: '500', color: '#0f172a' }}>
+                    <td style={{ fontSize: '0.85rem', textTransform: 'capitalize', fontWeight: '500', color: 'var(--text-primary)' }}>
                       {userRole.replace('_', ' ')}
                     </td>
                     <td>
-                      <span className={`badge ${userStatus}`}>
+                      <span className={`badge ${userStatus === 'suspended' ? 'badge-danger' : userStatus === 'pending' ? 'badge-warning' : 'badge-success'}`}>
                         {userStatus === 'active' ? 'Active' : userStatus === 'suspended' ? 'Suspended' : 'Pending'}
                       </span>
                     </td>
                     <td>
-                      <div style={{ display: 'flex', gap: '8px' }}>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
                         {userStatus !== 'active' ? (
                           <button
                             onClick={() => handleUpdateStatus(u.id, 'active')}
                             disabled={actionLoading === u.id}
-                            style={{
-                              padding: '6px 12px',
-                              borderRadius: '6px',
-                              border: 'none',
-                              background: '#2ed573',
-                              color: '#fff',
-                              fontSize: '12px',
-                              fontWeight: '600',
-                              cursor: 'pointer'
-                            }}
+                            className="btn btn-success btn-sm"
                           >
                             Activate
                           </button>
@@ -176,16 +158,7 @@ const Users = () => {
                           <button
                             onClick={() => handleUpdateStatus(u.id, 'suspended')}
                             disabled={actionLoading === u.id}
-                            style={{
-                              padding: '6px 12px',
-                              borderRadius: '6px',
-                              border: '1px solid #ff4757',
-                              background: 'transparent',
-                              color: '#ff4757',
-                              fontSize: '12px',
-                              fontWeight: '600',
-                              cursor: 'pointer'
-                            }}
+                            className="btn btn-danger btn-sm"
                           >
                             Suspend
                           </button>
@@ -197,7 +170,7 @@ const Users = () => {
               })
             ) : (
               <tr>
-                <td colSpan="5" style={{ textAlign: 'center', padding: '30px', color: '#64748b' }}>
+                <td colSpan="5" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
                   No users found matching search criteria.
                 </td>
               </tr>
