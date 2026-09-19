@@ -19,7 +19,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   bool _isSaving = false;
 
-  final Color _navyBlue = const Color(0xFFF8FAFC);
   final Color _lightBlue = const Color(0xFF00B4D8);
   final Color _textColor = const Color(0xFF0F172A);
 
@@ -89,11 +88,21 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _navyBlue,
+      backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        title: Text('Edit Profile', style: TextStyle(color: _textColor, fontWeight: FontWeight.bold)),
+        surfaceTintColor: Colors.transparent,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back_ios_new_rounded, color: _textColor, size: 20),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text('Personal Information',
+            style: TextStyle(
+                color: _textColor,
+                fontWeight: FontWeight.w800,
+                fontSize: 18,
+                letterSpacing: -0.3)),
         iconTheme: IconThemeData(color: _textColor),
       ),
       body: SafeArea(
@@ -130,10 +139,20 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 _buildLabel('Phone Number'),
                 _buildTextField(
                   controller: _phoneController,
-                  hint: 'Enter your phone number',
+                  hint: 'Phone number',
                   icon: Icons.phone_outlined,
-                  keyboardType: TextInputType.phone,
-                  validator: (val) => val == null || val.trim().isEmpty ? 'Phone number is required' : null,
+                  readOnly: true,
+                  fillColor: const Color(0xFFF1F5F9),
+                  suffixIcon: const Padding(
+                    padding: EdgeInsets.only(right: 12),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.lock_rounded, size: 18, color: Color(0xFF94A3B8)),
+                      ],
+                    ),
+                  ),
+                  helperText: 'Phone number is verified and cannot be changed',
                 ),
                 const SizedBox(height: 20),
                 // Addresses info tile
@@ -229,22 +248,36 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     int maxLines = 1,
     TextInputType keyboardType = TextInputType.text,
     String? Function(String?)? validator,
+    bool readOnly = false,
+    Widget? suffixIcon,
+    Color? fillColor,
+    String? helperText,
   }) {
     return TextFormField(
       controller: controller,
+      readOnly: readOnly,
       maxLines: maxLines,
       keyboardType: keyboardType,
-      style: const TextStyle(fontSize: 15, color: Colors.black87),
+      style: TextStyle(
+        fontSize: 15,
+        color: readOnly ? const Color(0xFF64748B) : Colors.black87,
+        fontWeight: readOnly ? FontWeight.w600 : FontWeight.normal,
+      ),
       validator: validator,
       decoration: InputDecoration(
         hintText: hint,
         hintStyle: TextStyle(color: Colors.grey.shade400),
-        prefixIcon: maxLines == 1 ? Icon(icon, color: Colors.grey.shade400) : Padding(
-          padding: const EdgeInsets.only(bottom: 40),
-          child: Icon(icon, color: Colors.grey.shade400),
-        ),
+        prefixIcon: maxLines == 1
+            ? Icon(icon, color: Colors.grey.shade400)
+            : Padding(
+                padding: const EdgeInsets.only(bottom: 40),
+                child: Icon(icon, color: Colors.grey.shade400),
+              ),
+        suffixIcon: suffixIcon,
+        helperText: helperText,
+        helperStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11.5),
         filled: true,
-        fillColor: Colors.white,
+        fillColor: fillColor ?? Colors.white,
         contentPadding: const EdgeInsets.all(16),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
@@ -252,11 +285,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: Colors.grey.shade200),
+          borderSide: BorderSide(
+              color: readOnly
+                  ? const Color(0xFFE2E8F0)
+                  : Colors.grey.shade200),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: _lightBlue, width: 1.5),
+          borderSide: BorderSide(
+              color: readOnly ? const Color(0xFFE2E8F0) : _lightBlue,
+              width: 1.5),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
