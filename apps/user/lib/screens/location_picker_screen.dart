@@ -34,50 +34,58 @@ class _LocationPickerBottomSheetState extends State<LocationPickerBottomSheet> {
   }
 
   Future<void> _determinePosition() async {
-    bool serviceEnabled;
-    LocationPermission permission;
-
-    serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      _setDefaultPosition();
-      return;
-    }
-
-    permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
         _setDefaultPosition();
         return;
       }
-    }
 
-    if (permission == LocationPermission.deniedForever) {
-      _setDefaultPosition();
-      return;
-    }
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          _setDefaultPosition();
+          return;
+        }
+      }
 
-    try {
-      final position = await Geolocator.getCurrentPosition();
+      if (permission == LocationPermission.deniedForever) {
+        _setDefaultPosition();
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.medium,
+          timeLimit: Duration(seconds: 10),
+        ),
+      );
+      if (!mounted) return;
       setState(() {
         _currentPosition = LatLng(position.latitude, position.longitude);
         _isLoading = false;
       });
       _getAddressFromLatLng(_currentPosition!);
     } catch (e) {
-      _setDefaultPosition();
+      debugPrint('Location determination error: $e');
+      if (mounted) {
+        _setDefaultPosition();
+      }
     }
   }
 
   void _setDefaultPosition() {
+    if (!mounted) return;
     setState(() {
-      _currentPosition = const LatLng(9.9312, 76.2673); // Kochi
+      _currentPosition = const LatLng(9.9312, 76.2673); // Kochi fallback
       _isLoading = false;
     });
     _getAddressFromLatLng(_currentPosition!);
   }
 
   Future<void> _getAddressFromLatLng(LatLng position) async {
+    if (!mounted) return;
     setState(() {
       _currentAddress = 'Fetching address...';
     });
@@ -85,29 +93,34 @@ class _LocationPickerBottomSheetState extends State<LocationPickerBottomSheet> {
       final url = Uri.parse(
           'https://nominatim.openstreetmap.org/reverse?format=json&lat=${position.latitude}&lon=${position.longitude}&zoom=18&addressdetails=1');
       final response = await http.get(url, headers: {
-        'User-Agent': 'OceanKartApp/1.0',
-      });
+        'User-Agent': 'OceanKartApp/1.0 (com.oceankartUser)',
+      }).timeout(const Duration(seconds: 8));
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        if (data['display_name'] != null) {
+        if (data['display_name'] != null && mounted) {
           setState(() {
             _currentAddress = data['display_name'];
           });
-        } else {
+        } else if (mounted) {
           setState(() {
-            _currentAddress = 'Address not found';
+            _currentAddress =
+                'Location (${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)})';
           });
         }
-      } else {
+      } else if (mounted) {
         setState(() {
-          _currentAddress = 'Failed to fetch address';
+          _currentAddress =
+              'Location (${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)})';
         });
       }
     } catch (e) {
-      setState(() {
-        _currentAddress = 'Error: $e';
-      });
+      if (mounted) {
+        setState(() {
+          _currentAddress =
+              'Location (${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)})';
+        });
+      }
     }
   }
 
@@ -226,7 +239,7 @@ class _LocationPickerBottomSheetState extends State<LocationPickerBottomSheet> {
                                 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                             fallbackUrl:
                                 'https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-                            userAgentPackageName: 'com.example.ocean_kart',
+                            userAgentPackageName: 'com.oceankartUser',
                             maxZoom: 19,
                           ),
                         ],

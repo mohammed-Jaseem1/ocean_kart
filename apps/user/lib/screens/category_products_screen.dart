@@ -4,7 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'cart_screen.dart';
-import 'checkout_screen.dart';
+import 'product_detail_screen.dart';
 
 class CategoryProductsScreen extends StatefulWidget {
   final String categoryName;
@@ -397,7 +397,7 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                       maxCrossAxisExtent: 200.0,
                       mainAxisSpacing: 12.0,
                       crossAxisSpacing: 12.0,
-                      childAspectRatio: 0.72,
+                      childAspectRatio: 0.69,
                     ),
                     delegate: SliverChildBuilderDelegate(
                       (context, index) => _buildProductCard(docs[index]),
@@ -419,7 +419,7 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
     final String? malayalamName = data['malayalamName'];
     final String displayName =
         malayalamName != null && malayalamName.trim().isNotEmpty
-            ? '$name\n($malayalamName)'
+            ? '$name ($malayalamName)'
             : name;
     final imagesList = (data['images'] as List?)?.map((e) => e.toString()).toList();
     final String? imageUrl = (imagesList != null && imagesList.isNotEmpty)
@@ -431,16 +431,29 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
     final double stockQuantity =
         (data['stockQuantity'] as num?)?.toDouble() ?? 0.0;
     final bool isOutOfStock = stockQuantity <= 0;
+    final double activePrice = isOffer && offerPrice > 0 ? offerPrice : price;
 
-    return Container(
-      decoration: BoxDecoration(
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ProductDetailScreen(productDoc: doc),
+          ),
+        );
+      },
+      child: Container(
+        decoration: BoxDecoration(
         color: _cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: const Color(0xFF94A3B8).withValues(alpha: 0.35),
+          width: 1,
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 8,
+            blurRadius: 6,
             offset: const Offset(0, 2),
           ),
         ],
@@ -451,15 +464,14 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
         children: [
           Expanded(
             child: Stack(
+              fit: StackFit.expand,
               children: [
                 Container(
-                  color: const Color(0xFFF1F5F9),
-                  width: double.infinity,
-                  height: double.infinity,
+                  color: const Color(0xFFF8FAFC),
                   child: () {
                     if (imageUrl == null || imageUrl.isEmpty) {
                       return const Center(
-                        child: Icon(Icons.image, color: Colors.black12, size: 32),
+                        child: Icon(Icons.set_meal_outlined, color: Colors.black12, size: 36),
                       );
                     }
                     if (imageUrl.startsWith('http')) {
@@ -474,7 +486,7 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                           ),
                         ),
                         errorWidget: (context, url, error) => const Center(
-                          child: Icon(Icons.broken_image, color: Colors.black26),
+                          child: Icon(Icons.set_meal_outlined, color: Colors.black12, size: 36),
                         ),
                       );
                     }
@@ -488,195 +500,160 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                       );
                     } catch (_) {
                       return const Center(
-                        child: Icon(Icons.image, color: Colors.black12, size: 32),
+                        child: Icon(Icons.set_meal_outlined, color: Colors.black12, size: 36),
                       );
                     }
                   }(),
                 ),
-                if (isOffer)
+                if (isOutOfStock)
                   Positioned(
                     top: 8,
                     left: 8,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                       decoration: BoxDecoration(
-                        color: Colors.redAccent,
-                        borderRadius: BorderRadius.circular(6),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.redAccent.withValues(alpha: 0.4),
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
+                        color: Colors.black.withValues(alpha: 0.7),
+                        borderRadius: BorderRadius.circular(4),
                       ),
                       child: const Text(
-                        'OFFER',
+                        'Out of Stock',
                         style: TextStyle(
                           color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0.5,
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
                     ),
                   ),
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: isOutOfStock
+                          ? null
+                          : () async {
+                              await _addToCart(doc);
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('$name added to cart'),
+                                  duration: const Duration(seconds: 2),
+                                  behavior: SnackBarBehavior.floating,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                              );
+                            },
+                      borderRadius: BorderRadius.circular(20),
+                      child: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.12),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Center(
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            alignment: Alignment.center,
+                            children: [
+                              Icon(
+                                Icons.shopping_basket_outlined,
+                                size: 19,
+                                color: isOutOfStock
+                                    ? Colors.grey.shade400
+                                    : const Color(0xFF0F2942),
+                              ),
+                              Positioned(
+                                right: -3,
+                                bottom: -1,
+                                child: Container(
+                                  padding: const EdgeInsets.all(0.5),
+                                  decoration: const BoxDecoration(
+                                    color: Colors.white,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    Icons.add,
+                                    size: 10,
+                                    color: isOutOfStock
+                                        ? Colors.grey.shade400
+                                        : const Color(0xFF0F2942),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
           Padding(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   displayName,
-                  style: TextStyle(
-                    color: _textColor,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    height: 1.2,
-                  ),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF0F172A),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    height: 1.25,
+                  ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
+                if (isOffer && offerPrice > 0 && offerPrice < price)
+                  Text(
+                    '₹${price.toStringAsFixed(price.truncateToDouble() == price ? 0 : 2)}',
+                    style: const TextStyle(
+                      color: Color(0xFF94A3B8),
+                      decoration: TextDecoration.lineThrough,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  )
+                else
+                  const SizedBox(height: 16),
+                const SizedBox(height: 2),
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
                   children: [
-                    if (isOffer)
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '₹$price / kg',
-                            style: const TextStyle(
-                              color: Colors.grey,
-                              decoration: TextDecoration.lineThrough,
-                              fontSize: 10,
-                            ),
-                          ),
-                          Text(
-                            '₹$offerPrice / kg',
-                            style: const TextStyle(
-                              color: Colors.redAccent,
-                              fontWeight: FontWeight.w900,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ],
-                      )
-                    else
-                      Text(
-                        '₹$price / kg',
-                        style: TextStyle(
-                          color: _lightBlue,
-                          fontWeight: FontWeight.w900,
-                          fontSize: 13,
-                        ),
-                      ),
-                    if (isOutOfStock)
-                      const Text(
-                        'Out of Stock',
-                        style: TextStyle(
-                          color: Colors.red,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 10,
-                        ),
-                      )
-                    else
-                      Text(
-                        '${stockQuantity.toStringAsFixed(1)}kg left',
-                        style: const TextStyle(
-                          color: Colors.green,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 10,
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: InkWell(
-                        onTap: isOutOfStock ? null : () => _addToCart(doc),
-                        borderRadius: BorderRadius.circular(8),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          decoration: BoxDecoration(
-                            color: isOutOfStock
-                                ? Colors.grey.shade300
-                                : _lightBlue.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Center(
-                            child: Text(
-                              'ADD',
-                              style: TextStyle(
-                                color: isOutOfStock ? Colors.grey : _lightBlue,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 11,
-                              ),
-                            ),
-                          ),
-                        ),
+                    Text(
+                      '₹${activePrice.toStringAsFixed(activePrice.truncateToDouble() == activePrice ? 0 : 2)}',
+                      style: const TextStyle(
+                        color: Color(0xFF0A2540),
+                        fontWeight: FontWeight.w900,
+                        fontSize: 16,
+                        letterSpacing: -0.3,
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: InkWell(
-                        onTap: isOutOfStock
-                            ? null
-                            : () async {
-                                await _addToCart(doc);
-                                if (mounted) {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) =>
-                                          const CheckoutScreen(totalAmount: 0),
-                                    ),
-                                  );
-                                }
-                              },
-                        borderRadius: BorderRadius.circular(8),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          decoration: BoxDecoration(
-                            gradient: isOutOfStock
-                                ? null
-                                : LinearGradient(
-                                    colors: [
-                                      _lightBlue,
-                                      const Color(0xFF0077B6),
-                                    ],
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                  ),
-                            color: isOutOfStock ? Colors.grey.shade400 : null,
-                            borderRadius: BorderRadius.circular(8),
-                            boxShadow: isOutOfStock
-                                ? []
-                                : [
-                                    BoxShadow(
-                                      color: _lightBlue.withValues(alpha: 0.3),
-                                      blurRadius: 4,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
-                          ),
-                          child: const Center(
-                            child: Text(
-                              'BUY',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 11,
-                              ),
-                            ),
-                          ),
-                        ),
+                    const SizedBox(width: 3),
+                    const Text(
+                      '/1kg',
+                      style: TextStyle(
+                        color: Color(0xFF64748B),
+                        fontWeight: FontWeight.w500,
+                        fontSize: 11.5,
                       ),
                     ),
                   ],
@@ -686,6 +663,7 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 }

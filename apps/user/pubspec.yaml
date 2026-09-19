@@ -76,6 +76,7 @@ flutter:
   assets:
     - assets/splash.png
     - assets/google-logo.jpg
+    - assets/fish_banner.jpg
     - .env
 
   # To add assets to your application, add an assets section, like this:

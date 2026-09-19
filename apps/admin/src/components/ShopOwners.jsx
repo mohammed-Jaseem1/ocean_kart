@@ -3,7 +3,6 @@ import { collection, query, getDocs, doc, updateDoc, setDoc, serverTimestamp } f
 import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db, app, secondaryAuth } from '../firebase';
-import { keralaPlaces } from '../constants/keralaPlaces';
 
 const ShopOwners = () => {
   const [shopOwners, setShopOwners] = useState([]);
@@ -20,14 +19,46 @@ const ShopOwners = () => {
     location: '', landmark: '', address: '', pincode: '',
     deliveryRadiusKm: '10'
   });
+  const [locationsList, setLocationsList] = useState([]);
 
   useEffect(() => {
     fetchShopOwners();
+    fetchLocations();
   }, []);
 
-  const fetchShopOwners = async () => {
-    setLoading(true);
+  const fetchLocations = async () => {
     try {
+      const q = query(collection(db, 'locations'));
+      const snapshot = await getDocs(q);
+      const fetched = [];
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        if (data.status === 'active' || !data.status) {
+          fetched.push({ id: docSnap.id, ...data });
+        }
+      });
+      fetched.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      setLocationsList(fetched);
+    } catch (err) {
+      console.error('Error fetching locations for shop owners dropdown:', err);
+    }
+  };
+
+  const fetchShopOwners = async (forceRefresh = false) => {
+    try {
+      if (!forceRefresh) {
+        const cached = sessionStorage.getItem('admin_shop_owners_cache');
+        if (cached) {
+          try {
+            setShopOwners(JSON.parse(cached));
+            setLoading(false);
+            return;
+          } catch (e) {
+            console.error('Cache parse error:', e);
+          }
+        }
+      }
+      setLoading(true);
       const q = query(collection(db, 'shop_owners'));
       const snapshot = await getDocs(q);
       const fetched = [];
@@ -35,6 +66,7 @@ const ShopOwners = () => {
         fetched.push({ id: docSnap.id, ...docSnap.data() });
       });
       setShopOwners(fetched);
+      sessionStorage.setItem('admin_shop_owners_cache', JSON.stringify(fetched));
     } catch (err) {
       console.error('Error fetching shop owners:', err);
     } finally {
@@ -124,7 +156,7 @@ const ShopOwners = () => {
       }
       
       handleCloseModal();
-      fetchShopOwners();
+      fetchShopOwners(true);
     } catch (err) {
       console.error(isEditing ? 'Error updating shop owner:' : 'Error adding shop owner:', err);
       alert((isEditing ? 'Failed to update shop owner: ' : 'Failed to add shop owner: ') + err.message);
@@ -134,6 +166,7 @@ const ShopOwners = () => {
   };
 
   const handleEditClick = (owner) => {
+    fetchLocations();
     setFormData({
       name: owner.name || owner.shopName || '',
       mobileNumber: owner.mobileNumber || '',
@@ -143,7 +176,8 @@ const ShopOwners = () => {
       landmark: owner.landmark || '',
       address: owner.address || owner.shopAddress || '',
       pincode: owner.pincode || '',
-      deliveryRadiusKm: owner.deliveryRadiusKm?.toString() || '10'
+      deliveryRadiusKm: owner.deliveryRadiusKm?.toString() || '10',
+      profileImage: owner.profileImage || owner.shopImage || owner.imageUrl || ''
     });
     setEditingId(owner.id);
     setIsEditing(true);
@@ -165,9 +199,11 @@ const ShopOwners = () => {
     setActionLoading(ownerId);
     try {
       await updateDoc(doc(db, 'shop_owners', ownerId), { status: newStatus });
-      setShopOwners(prev =>
-        prev.map(item => item.id === ownerId ? { ...item, status: newStatus } : item)
-      );
+      setShopOwners(prev => {
+        const updated = prev.map(item => item.id === ownerId ? { ...item, status: newStatus } : item);
+        sessionStorage.setItem('admin_shop_owners_cache', JSON.stringify(updated));
+        return updated;
+      });
     } catch (err) {
       console.error('Error updating shop owner status:', err);
       alert('Failed to update status: ' + err.message);
@@ -220,6 +256,7 @@ const ShopOwners = () => {
 
           <button 
             onClick={() => {
+              fetchLocations();
               setFormData({
                 name: '', mobileNumber: '', email: '', password: '',
                 location: '', landmark: '', address: '', pincode: '',
@@ -243,6 +280,38 @@ const ShopOwners = () => {
             </div>
             <form onSubmit={handleAddSubmit}>
               <div className="modal-body">
+                {formData.profileImage && (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '1rem',
+                    padding: '0.75rem 1rem',
+                    marginBottom: '1rem',
+                    backgroundColor: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '12px'
+                  }}>
+                    <img
+                      src={formData.profileImage}
+                      alt="Store Profile"
+                      style={{
+                        width: '56px',
+                        height: '56px',
+                        borderRadius: '50%',
+                        objectFit: 'cover',
+                        border: '2px solid var(--primary-light, #00b4d8)'
+                      }}
+                    />
+                    <div>
+                      <div style={{ fontWeight: '600', fontSize: '0.9rem', color: 'var(--text-primary)' }}>
+                        Store Profile Image
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                        Configured via Store App Profile
+                      </div>
+                    </div>
+                  </div>
+                )}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                   <div className="form-group">
                     <label className="form-label">Shop / Owner Name *</label>
@@ -276,12 +345,35 @@ const ShopOwners = () => {
                   )}
                   <div className="form-group">
                     <label className="form-label">Location *</label>
-                    <select required name="location" value={formData.location} onChange={handleInputChange} className="form-select">
-                      <option value="" disabled>Select Location</option>
-                      {keralaPlaces.map((place) => (
-                        <option key={place} value={place}>{place}</option>
+                    <select
+                      required
+                      name="location"
+                      value={formData.location}
+                      onChange={handleInputChange}
+                      className="form-select"
+                    >
+                      <option value="" disabled>
+                        {locationsList.length === 0
+                          ? 'No locations added yet (Add in Locations tab)'
+                          : 'Select Location'}
+                      </option>
+                      {locationsList.map((loc) => (
+                        <option key={loc.id} value={loc.name}>
+                          {loc.name}
+                        </option>
                       ))}
+                      {formData.location &&
+                        !locationsList.some((l) => l.name === formData.location) && (
+                          <option value={formData.location}>
+                            {formData.location} (Current)
+                          </option>
+                        )}
                     </select>
+                    {locationsList.length === 0 && (
+                      <p style={{ fontSize: '0.75rem', color: 'var(--danger)', marginTop: '0.25rem' }}>
+                        No locations available. Please add a location in the <strong>Locations</strong> tab first.
+                      </p>
+                    )}
                   </div>
                   <div className="form-group">
                     <label className="form-label">Landmark *</label>
@@ -372,11 +464,35 @@ const ShopOwners = () => {
                   <tr key={owner.id}>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        {owner.profileImage || owner.shopImage || owner.imageUrl ? (
+                          <img
+                            src={owner.profileImage || owner.shopImage || owner.imageUrl}
+                            alt={owner.shopName || owner.name || 'Shop'}
+                            loading="lazy"
+                            style={{
+                              width: '38px',
+                              height: '38px',
+                              borderRadius: '50%',
+                              objectFit: 'cover',
+                              border: '1.5px solid #e2e8f0',
+                              backgroundColor: '#f8fafc',
+                              flexShrink: 0
+                            }}
+                            onError={(e) => {
+                              e.target.style.display = 'none';
+                              if (e.target.nextSibling) {
+                                e.target.nextSibling.style.display = 'flex';
+                              }
+                            }}
+                          />
+                        ) : null}
                         <div style={{
-                          width: '36px', height: '36px', borderRadius: '50%',
+                          width: '38px', height: '38px', borderRadius: '50%',
                           backgroundColor: 'var(--primary-light)', color: 'var(--primary)',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontWeight: '700', fontSize: '0.875rem'
+                          display: (owner.profileImage || owner.shopImage || owner.imageUrl) ? 'none' : 'flex',
+                          alignItems: 'center', justifyContent: 'center',
+                          fontWeight: '700', fontSize: '0.875rem',
+                          flexShrink: 0
                         }}>
                           {(owner.shopName || owner.name || 'S').charAt(0).toUpperCase()}
                         </div>

@@ -240,11 +240,18 @@ class PartnerProfileGate extends StatelessWidget {
     if (role == 'Delivery Boy' || role == 'delivery_partner') {
       return const DeliveryPartnerDashboard();
     } else if (role == 'Shopkeeper') {
-      final isPinned = userData?['isLocationPinned'] == true &&
-          userData?['latitude'] != null &&
-          userData?['longitude'] != null;
+      // Check if location has already been logged for this shop
+      final bool hasPinned = userData?['isLocationPinned'] == true;
+      final bool hasCoords = (userData?['latitude'] != null && userData?['longitude'] != null);
+      final bool isLocationLoggedFlag = userData?['isLocationLogged'] == true;
+      final bool hasAddress = (userData?['location'] != null && userData!['location'].toString().trim().isNotEmpty) ||
+          (userData?['pinnedAddress'] != null && userData!['pinnedAddress'].toString().trim().isNotEmpty) ||
+          (userData?['address'] != null && userData!['address'].toString().trim().isNotEmpty) ||
+          (userData?['shopAddress'] != null && userData!['shopAddress'].toString().trim().isNotEmpty);
 
-      if (!isPinned) {
+      final bool isLocationLogged = hasPinned || hasCoords || isLocationLoggedFlag || hasAddress;
+
+      if (!isLocationLogged) {
         return const LocationSetupScreen(role: 'Shopkeeper', isInitialSetup: true);
       }
       return const DashboardScreen();

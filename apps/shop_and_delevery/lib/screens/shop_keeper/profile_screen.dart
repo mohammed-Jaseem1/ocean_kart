@@ -347,7 +347,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final bool isLocationPinned = _userData['isLocationPinned'] == true && _userData['latitude'] != null;
+    final bool isLocationPinned = (_userData['isLocationPinned'] == true && _userData['latitude'] != null) ||
+        (_userData['latitude'] != null && _userData['longitude'] != null);
     final String pinnedAddress = _userData['pinnedAddress'] ?? _userData['shopAddress'] ?? _userData['address'] ?? 'Not configured yet';
 
     return Scaffold(

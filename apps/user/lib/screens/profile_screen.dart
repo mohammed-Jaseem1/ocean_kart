@@ -5,7 +5,14 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'edit_profile_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  final bool isTab;
+  final VoidCallback? onSwitchToOrders;
+
+  const ProfileScreen({
+    super.key,
+    this.isTab = false,
+    this.onSwitchToOrders,
+  });
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -136,7 +143,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _handleLogout() async {
     await FirebaseAuth.instance.signOut();
-    if (mounted) {
+    if (mounted && Navigator.canPop(context)) {
       Navigator.pop(context);
     }
   }
@@ -166,6 +173,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 SliverAppBar(
                   expandedHeight: 260,
                   pinned: true,
+                  automaticallyImplyLeading: !widget.isTab,
                   backgroundColor: _lightBlue,
                   elevation: 0,
                   iconTheme: const IconThemeData(color: Colors.white),
@@ -345,10 +353,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                         _buildProfileOption(
                           icon: Icons.history,
-                          title: 'Order History',
+                          title: 'My Orders',
                           onTap: () {
-                            Navigator.pop(context);
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Check "My Orders" tab on Home')));
+                            if (widget.onSwitchToOrders != null) {
+                              widget.onSwitchToOrders!();
+                            } else if (Navigator.canPop(context)) {
+                              Navigator.pop(context);
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Check "My Orders" tab on Home')));
+                            }
                           },
                         ),
                         _buildProfileOption(
@@ -384,7 +396,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                           ),
                         ),
-                        const SizedBox(height: 40),
+                        SizedBox(height: widget.isTab ? 90 : 40),
                       ],
                     ),
                   ),

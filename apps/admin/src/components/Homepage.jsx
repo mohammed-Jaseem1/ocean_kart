@@ -4,6 +4,7 @@ import Users from './Users';
 import Revenue from './Revenue';
 import DeliveryBoys from './DeliveryBoys';
 import Categories from './Categories';
+import Locations from './Locations';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import logoImg from '../assets/images/HomeScreen.png';
@@ -230,6 +231,15 @@ const Homepage = ({ user, onSignOut }) => {
           )
         },
         {
+          name: 'Locations',
+          icon: (
+            <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" />
+              <circle cx="12" cy="9" r="2.5" />
+            </svg>
+          )
+        },
+        {
           name: 'Users',
           icon: (
             <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -329,6 +339,8 @@ const Homepage = ({ user, onSignOut }) => {
           <h1 className="header-title">
             {activeMenu === 'Shop Owners'
               ? 'Shop Owners & Store Partners'
+              : activeMenu === 'Locations'
+              ? 'Service & Store Locations'
               : activeMenu === 'Users'
               ? 'Registered App Users'
               : activeMenu === 'Revenue'
@@ -355,6 +367,8 @@ const Homepage = ({ user, onSignOut }) => {
         <main className="page-content">
           {activeMenu === 'Shop Owners' ? (
             <ShopOwners />
+          ) : activeMenu === 'Locations' ? (
+            <Locations />
           ) : activeMenu === 'Users' ? (
             <Users />
           ) : activeMenu === 'Revenue' ? (

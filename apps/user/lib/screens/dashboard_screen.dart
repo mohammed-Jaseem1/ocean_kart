@@ -5,10 +5,10 @@ import 'dart:convert';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'cart_screen.dart';
 import 'profile_screen.dart';
-import 'checkout_screen.dart';
 import 'category_products_screen.dart';
 import 'shop_products_screen.dart';
-import '../constants/kerala_places.dart';
+import 'search_screen.dart';
+import 'product_detail_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -19,13 +19,26 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   int _selectedIndex = 0;
-  String _searchQuery = '';
-  String _selectedLocation = 'Kochi';
+  final String _searchQuery = '';
+  String _selectedLocation = 'All Locations';
+  final Map<String, Map<String, dynamic>> _shopDataMap = {};
 
   final Color _navyBlue = const Color(0xFFF8FAFC);
   final Color _cardColor = Colors.white;
   final Color _lightBlue = const Color(0xFF00B4D8);
   final Color _textColor = const Color(0xFF0F172A);
+
+  bool _shopMatchesLocation(Map<String, dynamic>? shop, String location) {
+    if (shop == null) return false;
+    if (location == 'All' || location == 'All Locations' || location.isEmpty) {
+      return true;
+    }
+    final loc = (shop['location'] ?? '').toString().toLowerCase().trim();
+    final addr = (shop['address'] ?? shop['shopAddress'] ?? shop['pinnedAddress'] ?? '').toString().toLowerCase().trim();
+    final target = location.toLowerCase().trim();
+
+    return loc == target || loc.contains(target) || addr.contains(target);
+  }
 
 
 
@@ -61,12 +74,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
             combinedDocs.add(doc);
           }
         }
+        final map = <String, Map<String, dynamic>>{};
+        for (var doc in combinedDocs) {
+          final data = doc.data() as Map<String, dynamic>?;
+          if (data != null) {
+            map[doc.id] = data;
+          }
+        }
+        if (mounted) {
+          _shopDataMap.clear();
+          _shopDataMap.addAll(map);
+        }
         return combinedDocs;
       } catch (_) {
         return shopOwnersSnap.docs;
       }
     });
   }
+
 
   Future<void> _addToCart(DocumentSnapshot doc) async {
     final user = FirebaseAuth.instance.currentUser;
@@ -131,6 +156,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
           children: [
             _buildDeliveryPage(),
             _buildOrdersPage(),
+            ProfileScreen(
+              isTab: true,
+              onSwitchToOrders: () {
+                setState(() {
+                  _selectedIndex = 1;
+                });
+              },
+            ),
           ],
         ),
       ),
@@ -138,114 +171,140 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildDeliveryPage() {
-    return CustomScrollView(
-      physics: const BouncingScrollPhysics(),
-      slivers: [
-        SliverToBoxAdapter(child: _buildHeroSection()),
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.only(top: 24, bottom: 12, left: 16),
-            child: Text(
-              'Shop by Category',
-              style: TextStyle(
-                color: _textColor,
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.3,
-              ),
-            ),
-          ),
-        ),
-        SliverToBoxAdapter(child: _buildCategories()),
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.only(top: 24, bottom: 12, left: 16),
-            child: Text(
-              'Top brands near you',
-              style: TextStyle(
-                color: _textColor,
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ),
-        SliverToBoxAdapter(child: _buildTopBrands()),
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
-            child: Text(
-              'Fresh Stock Available',
-              style: TextStyle(
-                color: _textColor.withValues(alpha: 0.9),
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.5,
-              ),
-            ),
-          ),
-        ),
-        StreamBuilder<QuerySnapshot>(
-          stream: _productsStream,
-          builder: (context, snapshot) {
-            if (!snapshot.hasData) {
-              return const SliverToBoxAdapter(
+    return Column(
+      children: [
+        _buildTopBar(),
+        Expanded(
+          child: CustomScrollView(
+            physics: const BouncingScrollPhysics(),
+            slivers: [
+              SliverToBoxAdapter(child: _buildBannerImage()),
+              SliverToBoxAdapter(
                 child: Padding(
-                  padding: EdgeInsets.all(32.0),
-                  child: Center(child: CircularProgressIndicator()),
-                ),
-              );
-            }
-
-            var docs = snapshot.data!.docs.where((doc) {
-              final data = doc.data() as Map<String, dynamic>;
-              final stock = (data['stockQuantity'] as num?)?.toDouble() ?? 0;
-              return stock > 0;
-            }).toList();
-
-            if (_searchQuery.isNotEmpty) {
-              docs = docs.where((doc) {
-                final data = doc.data() as Map<String, dynamic>;
-                final name = (data['name'] ?? '').toString().toLowerCase();
-                final malayalam = (data['malayalamName'] ?? '')
-                    .toString()
-                    .toLowerCase();
-                return name.contains(_searchQuery.toLowerCase()) ||
-                    malayalam.contains(_searchQuery.toLowerCase());
-              }).toList();
-            }
-
-            if (docs.isEmpty) {
-              return SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.all(32.0),
-                  child: Center(
-                    child: Text(
-                      'No products found.',
-                      style: TextStyle(color: _textColor.withValues(alpha: 0.6)),
+                  padding: const EdgeInsets.only(top: 20, bottom: 12, left: 16),
+                  child: Text(
+                    'Shop by Category',
+                    style: TextStyle(
+                      color: _textColor,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.3,
                     ),
                   ),
                 ),
-              );
-            }
-
-            return SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              sliver: SliverGrid(
-                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: 200.0,
-                  mainAxisSpacing: 12.0,
-                  crossAxisSpacing: 12.0,
-                  childAspectRatio: 0.72, // Adjusted for smaller floating card
-                ),
-                delegate: SliverChildBuilderDelegate((context, index) {
-                  return _buildProductCard(docs[index]);
-                }, childCount: docs.length),
               ),
-            );
-          },
+              SliverToBoxAdapter(child: _buildCategories()),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 24, bottom: 12, left: 16),
+                  child: Text(
+                    'Top brands near you',
+                    style: TextStyle(
+                      color: _textColor,
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+              SliverToBoxAdapter(child: _buildTopBrands()),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
+                  child: Text(
+                    'Fresh Stock Available',
+                    style: TextStyle(
+                      color: _textColor.withValues(alpha: 0.9),
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+              ),
+              StreamBuilder<QuerySnapshot>(
+                stream: _productsStream,
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) {
+                    return const SliverToBoxAdapter(
+                      child: Padding(
+                        padding: EdgeInsets.all(32.0),
+                        child: Center(child: CircularProgressIndicator()),
+                      ),
+                    );
+                  }
+
+                  var docs = snapshot.data!.docs.where((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    final stock = (data['stockQuantity'] as num?)?.toDouble() ?? 0;
+                    if (stock <= 0) return false;
+
+                    // Filter by location
+                    if (_selectedLocation != 'All' && _selectedLocation != 'All Locations') {
+                      final shopId = data['shopId']?.toString();
+                      if (shopId != null && _shopDataMap.containsKey(shopId)) {
+                        if (!_shopMatchesLocation(_shopDataMap[shopId], _selectedLocation)) {
+                          return false;
+                        }
+                      } else if (data['location'] != null && data['location'].toString().trim().isNotEmpty) {
+                        final prodLoc = data['location'].toString().toLowerCase().trim();
+                        if (!prodLoc.contains(_selectedLocation.toLowerCase().trim())) {
+                          return false;
+                        }
+                      }
+                    }
+
+                    return true;
+                  }).toList();
+
+                  if (_searchQuery.isNotEmpty) {
+                    docs = docs.where((doc) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      final name = (data['name'] ?? '').toString().toLowerCase();
+                      final malayalam = (data['malayalamName'] ?? '')
+                          .toString()
+                          .toLowerCase();
+                      return name.contains(_searchQuery.toLowerCase()) ||
+                          malayalam.contains(_searchQuery.toLowerCase());
+                    }).toList();
+                  }
+
+                  if (docs.isEmpty) {
+                    return SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.all(32.0),
+                        child: Center(
+                          child: Text(
+                            _selectedLocation != 'All' && _selectedLocation != 'All Locations'
+                                ? 'No products available in $_selectedLocation.'
+                                : 'No products found.',
+                            style: TextStyle(color: _textColor.withValues(alpha: 0.6)),
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+
+                  return SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                    sliver: SliverGrid(
+                      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                        maxCrossAxisExtent: 200.0,
+                        mainAxisSpacing: 12.0,
+                        crossAxisSpacing: 12.0,
+                        childAspectRatio: 0.69, // Optimized for new card design
+                      ),
+                      delegate: SliverChildBuilderDelegate((context, index) {
+                        return _buildProductCard(docs[index]);
+                      }, childCount: docs.length),
+                    ),
+                  );
+                },
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 80)),
+            ],
+          ),
         ),
-        const SliverToBoxAdapter(child: SizedBox(height: 80)),
       ],
     );
   }
@@ -486,185 +545,207 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildHeroSection() {
-    return Stack(
-      children: [
-        Container(
-          width: double.infinity,
-          height: 340,
-          decoration: BoxDecoration(
-            image: DecorationImage(
-              image: const CachedNetworkImageProvider(
-                'https://images.unsplash.com/photo-1615141982883-c7ad0e69fd62?q=80&w=1000&auto=format&fit=crop',
-              ),
-              fit: BoxFit.cover,
-              colorFilter: ColorFilter.mode(
-                Colors.black.withValues(alpha: 0.6),
-                BlendMode.darken,
-              ),
-            ),
+  Widget _buildTopBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
           ),
-        ),
-        Positioned(
-          top: 16,
-          left: 16,
-          right: 16,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // Left: Location selector
+          _buildLocationSelector(),
+
+          // Right: Collapsed Search option and Cart
+          Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              // Top Location Selector
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.15),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
+              GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => SearchScreen(
+                        selectedLocation: _selectedLocation,
+                        shopDataMap: _shopDataMap,
+                      ),
                     ),
-                  ],
+                  );
+                },
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Icon(Icons.search, color: _textColor, size: 20),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.location_on, color: Colors.redAccent, size: 18),
-                    const SizedBox(width: 4),
-                    PopupMenuButton<String>(
-                      position: PopupMenuPosition.under,
-                      color: Colors.white,
-                      surfaceTintColor: Colors.white,
-                      constraints: const BoxConstraints(maxHeight: 300, maxWidth: 200),
-                      onSelected: (String newValue) {
-                        setState(() {
-                          _selectedLocation = newValue;
-                        });
-                      },
-                      itemBuilder: (BuildContext context) {
-                        return keralaPlaces.map((String place) {
-                          return PopupMenuItem<String>(
-                            value: place,
-                            height: 38,
+              ),
+              const SizedBox(width: 10),
+              _buildCartIcon(),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLocationSelector() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance.collection('locations').snapshots(),
+        builder: (context, locSnap) {
+          final List<String> places = ['All Locations'];
+          if (locSnap.hasData) {
+            final dbPlaces = locSnap.data!.docs
+                .map((d) => ((d.data() as Map<String, dynamic>)['name'] ?? '').toString().trim())
+                .where((n) => n.isNotEmpty)
+                .toList();
+            dbPlaces.sort((a, b) => a.compareTo(b));
+            places.addAll(dbPlaces);
+          }
+
+          final String currentDisplay = places.contains(_selectedLocation)
+              ? _selectedLocation
+              : (places.length > 1 ? places[1] : 'All Locations');
+
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.location_on, color: Colors.redAccent, size: 18),
+              const SizedBox(width: 4),
+              PopupMenuButton<String>(
+                position: PopupMenuPosition.under,
+                color: Colors.white,
+                surfaceTintColor: Colors.white,
+                constraints: const BoxConstraints(maxHeight: 300, maxWidth: 220),
+                onSelected: (String newValue) {
+                  setState(() {
+                    _selectedLocation = newValue;
+                  });
+                },
+                itemBuilder: (BuildContext context) {
+                  return places.map((String place) {
+                    final bool isSelected = place == currentDisplay;
+                    return PopupMenuItem<String>(
+                      value: place,
+                      height: 38,
+                      child: Row(
+                        children: [
+                          if (place == 'All Locations')
+                            const Icon(Icons.public, size: 16, color: Colors.grey)
+                          else
+                            const Icon(Icons.place, size: 16, color: Color(0xFF00B4D8)),
+                          const SizedBox(width: 8),
+                          Expanded(
                             child: Text(
                               place,
-                              style: const TextStyle(color: Colors.black87, fontSize: 13),
-                            ),
-                          );
-                        }).toList();
-                      },
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 100),
-                            child: Text(
-                              keralaPlaces.contains(_selectedLocation)
-                                  ? _selectedLocation
-                                  : keralaPlaces.first,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.black87,
-                                fontWeight: FontWeight.bold,
+                              style: TextStyle(
+                                color: isSelected ? const Color(0xFF00B4D8) : Colors.black87,
+                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                                 fontSize: 13,
                               ),
                             ),
                           ),
-                          Icon(Icons.arrow_drop_down, color: Colors.grey.shade600),
+                          if (isSelected)
+                            const Icon(Icons.check, size: 16, color: Color(0xFF00B4D8)),
                         ],
                       ),
+                    );
+                  }).toList();
+                },
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 130),
+                      child: Text(
+                        currentDisplay,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.black87,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                      ),
                     ),
+                    Icon(Icons.arrow_drop_down, color: Colors.grey.shade600),
                   ],
                 ),
               ),
+            ],
+          );
+        },
+      ),
+    );
+  }
 
-              // Cart & Profile Icons
-              Row(
-                children: [
-                  _buildCartIcon(),
-                  const SizedBox(width: 12),
-                  GestureDetector(
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const ProfileScreen()),
-                    ),
-                    child: CircleAvatar(
-                      backgroundColor: Colors.white,
-                      radius: 20,
-                      child: Icon(Icons.person, color: _lightBlue),
-                    ),
-                  ),
-                ],
+  Widget _buildBannerImage() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+      child: Container(
+        width: double.infinity,
+        height: 175,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.08),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: CachedNetworkImage(
+          imageUrl:
+              'https://firebasestorage.googleapis.com/v0/b/oceankart-83bbd.firebasestorage.app/o/banners%2Ffresh_fish_banner.jpg?alt=media&token=35309bf1-5159-4486-adcf-ed0ac9a77b08',
+          fit: BoxFit.cover,
+          placeholder: (context, url) => Container(
+            color: const Color(0xFFF1F5F9),
+            child: const Center(
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
               ),
-            ],
+            ),
+          ),
+          errorWidget: (context, url, error) => Image.asset(
+            'assets/fish_banner.jpg',
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) => Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFF00B4D8), Color(0xFF0077B6)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              child: const Center(
+                child: Icon(Icons.set_meal, color: Colors.white, size: 48),
+              ),
+            ),
           ),
         ),
-        Positioned(
-          left: 16,
-          right: 16,
-          bottom: 40,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              const Text(
-                'Order Fresh Seafood Online',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 32,
-                  fontWeight: FontWeight.w900,
-                  height: 1.2,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Best shops in your city delivering to your doorstep',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.9),
-                  fontSize: 16,
-                ),
-              ),
-              const SizedBox(height: 24),
-              Container(
-                height: 54,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.1),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: TextField(
-                  onChanged: (val) {
-                    setState(() {
-                      _searchQuery = val.trim();
-                    });
-                  },
-                  style: const TextStyle(
-                    color: Colors.black87,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: 'Search for fish, prawns, etc.',
-                    hintStyle: TextStyle(
-                      color: Colors.grey.shade400,
-                      fontSize: 15,
-                    ),
-                    border: InputBorder.none,
-                    prefixIcon: Icon(Icons.search, color: Colors.grey.shade400),
-                    contentPadding: const EdgeInsets.symmetric(vertical: 16),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
+      ),
     );
   }
 
@@ -677,10 +758,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
             context,
             MaterialPageRoute(builder: (_) => const CartScreen()),
           ),
-          child: CircleAvatar(
-            backgroundColor: Colors.white,
-            radius: 20,
-            child: Icon(Icons.shopping_cart, color: _lightBlue),
+          child: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: const Icon(
+              Icons.shopping_cart_outlined,
+              color: Color(0xFF0F172A),
+              size: 20,
+            ),
           ),
         ),
         Positioned(
@@ -862,7 +952,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
         if (!snapshot.hasData || snapshot.data!.isEmpty) {
           return const SizedBox();
         }
-        final shops = snapshot.data!;
+        final allShops = snapshot.data!;
+        final shops = allShops.where((doc) {
+          final shop = doc.data() as Map<String, dynamic>?;
+          return _shopMatchesLocation(shop, _selectedLocation);
+        }).toList();
+
+        if (shops.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            child: Text(
+              _selectedLocation != 'All' && _selectedLocation != 'All Locations'
+                  ? 'No shops available in $_selectedLocation'
+                  : 'No shops available',
+              style: TextStyle(color: _textColor.withValues(alpha: 0.6), fontSize: 13),
+            ),
+          );
+        }
         return SizedBox(
           height: 110,
           child: ListView.builder(
@@ -974,8 +1080,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final String? malayalamName = data['malayalamName'];
     final String displayName =
         malayalamName != null && malayalamName.trim().isNotEmpty
-        ? '$name\\n($malayalamName)'
-        : name;
+            ? '$name ($malayalamName)'
+            : name;
     final imagesList = (data['images'] as List?)?.map((e) => e.toString()).toList();
     final String? imageUrl = (imagesList != null && imagesList.isNotEmpty)
         ? imagesList.first
@@ -986,13 +1092,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final double stockQuantity =
         (data['stockQuantity'] as num?)?.toDouble() ?? 0.0;
     final bool isOutOfStock = stockQuantity <= 0;
+    final double activePrice = isOffer && offerPrice > 0 ? offerPrice : price;
 
-    return Container(
-      margin: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: _cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ProductDetailScreen(
+              productDoc: doc,
+              selectedLocation: _selectedLocation,
+            ),
+          ),
+        );
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: const Color(0xFF94A3B8).withValues(alpha: 0.35),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -1000,210 +1128,196 @@ class _DashboardScreenState extends State<DashboardScreen> {
         children: [
           Expanded(
             child: Stack(
+              fit: StackFit.expand,
               children: [
                 Container(
-                  color: const Color(0xFFF1F5F9),
-                  width: double.infinity,
-                  height: double.infinity,
+                  color: const Color(0xFFF8FAFC),
                   child: () {
                     if (imageUrl == null || imageUrl.isEmpty) {
-                      return const Center(child: Icon(Icons.image, color: Colors.black12, size: 32));
+                      return const Center(
+                        child: Icon(Icons.set_meal_outlined, color: Colors.black12, size: 36),
+                      );
                     }
                     if (imageUrl.startsWith('http')) {
-                      return CachedNetworkImage(imageUrl: imageUrl, fit: BoxFit.cover);
+                      return CachedNetworkImage(
+                        imageUrl: imageUrl,
+                        fit: BoxFit.cover,
+                        placeholder: (context, url) => const Center(
+                          child: SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
+                        errorWidget: (context, url, error) => const Center(
+                          child: Icon(Icons.set_meal_outlined, color: Colors.black12, size: 36),
+                        ),
+                      );
                     }
-                    final cleanBase64 = imageUrl.contains('base64,') ? imageUrl.split('base64,').last : imageUrl;
+                    final cleanBase64 = imageUrl.contains('base64,')
+                        ? imageUrl.split('base64,').last
+                        : imageUrl;
                     try {
-                      return Image.memory(const Base64Decoder().convert(cleanBase64), fit: BoxFit.cover);
+                      return Image.memory(
+                        const Base64Decoder().convert(cleanBase64),
+                        fit: BoxFit.cover,
+                      );
                     } catch (_) {
-                      return const Center(child: Icon(Icons.image, color: Colors.black12, size: 32));
+                      return const Center(
+                        child: Icon(Icons.set_meal_outlined, color: Colors.black12, size: 36),
+                      );
                     }
                   }(),
                 ),
-                if (isOffer)
+                if (isOutOfStock)
                   Positioned(
                     top: 8,
                     left: 8,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                       decoration: BoxDecoration(
-                        color: Colors.redAccent,
-                        borderRadius: BorderRadius.circular(6),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.redAccent.withValues(alpha: 0.4),
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
+                        color: Colors.black.withValues(alpha: 0.7),
+                        borderRadius: BorderRadius.circular(4),
                       ),
                       child: const Text(
-                        'OFFER',
+                        'Out of Stock',
                         style: TextStyle(
                           color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0.5,
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
                     ),
                   ),
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: isOutOfStock
+                          ? null
+                          : () async {
+                              await _addToCart(doc);
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('$name added to cart'),
+                                  duration: const Duration(seconds: 2),
+                                  behavior: SnackBarBehavior.floating,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                              );
+                            },
+                      borderRadius: BorderRadius.circular(20),
+                      child: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.12),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Center(
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            alignment: Alignment.center,
+                            children: [
+                              Icon(
+                                Icons.shopping_basket_outlined,
+                                size: 19,
+                                color: isOutOfStock
+                                    ? Colors.grey.shade400
+                                    : const Color(0xFF0F2942),
+                              ),
+                              Positioned(
+                                right: -3,
+                                bottom: -1,
+                                child: Container(
+                                  padding: const EdgeInsets.all(0.5),
+                                  decoration: const BoxDecoration(
+                                    color: Colors.white,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    Icons.add,
+                                    size: 10,
+                                    color: isOutOfStock
+                                        ? Colors.grey.shade400
+                                        : const Color(0xFF0F2942),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
           Padding(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   displayName,
-                  style: TextStyle(
-                    color: _textColor,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    height: 1.2,
-                  ),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF0F172A),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    height: 1.25,
+                  ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
+                if (isOffer && offerPrice > 0 && offerPrice < price)
+                  Text(
+                    '₹${price.toStringAsFixed(price.truncateToDouble() == price ? 0 : 2)}',
+                    style: const TextStyle(
+                      color: Color(0xFF94A3B8),
+                      decoration: TextDecoration.lineThrough,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  )
+                else
+                  const SizedBox(height: 16),
+                const SizedBox(height: 2),
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
                   children: [
-                    if (isOffer)
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '₹$price / kg',
-                            style: const TextStyle(
-                              color: Colors.grey,
-                              decoration: TextDecoration.lineThrough,
-                              fontSize: 10,
-                            ),
-                          ),
-                          Text(
-                            '₹$offerPrice / kg',
-                            style: const TextStyle(
-                              color: Colors.redAccent,
-                              fontWeight: FontWeight.w900,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ],
-                      )
-                    else
-                      Text(
-                        '₹$price / kg',
-                        style: TextStyle(
-                          color: _lightBlue,
-                          fontWeight: FontWeight.w900,
-                          fontSize: 13,
-                        ),
-                      ),
-                    if (isOutOfStock)
-                      const Text(
-                        'Out of Stock',
-                        style: TextStyle(
-                          color: Colors.red,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 10,
-                        ),
-                      )
-                    else
-                      Text(
-                        '${stockQuantity.toStringAsFixed(1)}kg left',
-                        style: const TextStyle(
-                          color: Colors.green,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 10,
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: InkWell(
-                        onTap: isOutOfStock ? null : () => _addToCart(doc),
-                        borderRadius: BorderRadius.circular(8),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          decoration: BoxDecoration(
-                            color: isOutOfStock
-                                ? Colors.grey.shade300
-                                : _lightBlue.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Center(
-                            child: Text(
-                              'ADD',
-                              style: TextStyle(
-                                color: isOutOfStock ? Colors.grey : _lightBlue,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 11,
-                              ),
-                            ),
-                          ),
-                        ),
+                    Text(
+                      '₹${activePrice.toStringAsFixed(activePrice.truncateToDouble() == activePrice ? 0 : 2)}',
+                      style: const TextStyle(
+                        color: Color(0xFF0A2540),
+                        fontWeight: FontWeight.w900,
+                        fontSize: 16,
+                        letterSpacing: -0.3,
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: InkWell(
-                        onTap: isOutOfStock
-                            ? null
-                            : () async {
-                                await _addToCart(doc);
-                                if (mounted) {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) =>
-                                          const CheckoutScreen(totalAmount: 0),
-                                    ),
-                                  );
-                                }
-                              },
-                        borderRadius: BorderRadius.circular(8),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          decoration: BoxDecoration(
-                            gradient: isOutOfStock
-                                ? null
-                                : LinearGradient(
-                                    colors: [
-                                      _lightBlue,
-                                      const Color(0xFF0077B6),
-                                    ],
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                  ),
-                            color: isOutOfStock ? Colors.grey.shade400 : null,
-                            borderRadius: BorderRadius.circular(8),
-                            boxShadow: isOutOfStock
-                                ? []
-                                : [
-                                    BoxShadow(
-                                      color: _lightBlue.withValues(alpha: 0.3),
-                                      blurRadius: 4,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
-                          ),
-                          child: const Center(
-                            child: Text(
-                              'BUY',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 11,
-                              ),
-                            ),
-                          ),
-                        ),
+                    const SizedBox(width: 3),
+                    const Text(
+                      '/1kg',
+                      style: TextStyle(
+                        color: Color(0xFF64748B),
+                        fontWeight: FontWeight.w500,
+                        fontSize: 11.5,
                       ),
                     ),
                   ],
@@ -1213,8 +1327,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildBottomNav() {
     return Container(
@@ -1262,6 +1377,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
               child: Icon(Icons.receipt_long_outlined),
             ),
             label: 'Orders',
+          ),
+          BottomNavigationBarItem(
+            icon: Padding(
+              padding: EdgeInsets.only(bottom: 4),
+              child: Icon(Icons.person_outline),
+            ),
+            activeIcon: Padding(
+              padding: EdgeInsets.only(bottom: 4),
+              child: Icon(Icons.person),
+            ),
+            label: 'Profile',
           ),
         ],
       ),

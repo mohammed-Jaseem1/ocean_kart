@@ -3,7 +3,6 @@ import { collection, query, getDocs, doc, updateDoc, setDoc, serverTimestamp } f
 import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db, app, secondaryAuth } from '../firebase';
-import { keralaPlaces } from '../constants/keralaPlaces';
 
 const DeliveryBoys = () => {
   const [deliveryPartners, setDeliveryPartners] = useState([]);
@@ -20,7 +19,7 @@ const DeliveryBoys = () => {
   const [addingUser, setAddingUser] = useState(false);
   const [formData, setFormData] = useState({
     name: '', mobileNumber: '', email: '', password: '',
-    location: '', landmark: '', address: '', pincode: '',
+    address: '', pincode: '',
     vehicleNumber: '', vehicleType: 'Motorcycle / Scooter'
   });
 
@@ -121,8 +120,6 @@ const DeliveryBoys = () => {
           mobileNumber: formData.mobileNumber,
           address: formData.address,
           houseAddress: formData.address,
-          location: formData.location,
-          landmark: formData.landmark,
           pincode: formData.pincode,
           vehicleNumber: formData.vehicleNumber || 'KL-07-Temp',
           vehicleType: formData.vehicleType || 'Motorcycle / Scooter',
@@ -161,8 +158,6 @@ const DeliveryBoys = () => {
           mobileNumber: formData.mobileNumber,
           address: formData.address,
           houseAddress: formData.address,
-          location: formData.location,
-          landmark: formData.landmark,
           pincode: formData.pincode,
           vehicleNumber: formData.vehicleNumber || 'KL-07-Verified',
           vehicleType: formData.vehicleType || 'Motorcycle / Scooter',
@@ -193,8 +188,6 @@ const DeliveryBoys = () => {
       mobileNumber: partner.mobileNumber || '',
       email: partner.email || '',
       password: '',
-      location: partner.location || '',
-      landmark: partner.landmark || '',
       address: partner.address || partner.houseAddress || '',
       pincode: partner.pincode || '',
       vehicleNumber: partner.vehicleNumber || '',
@@ -290,7 +283,7 @@ const DeliveryBoys = () => {
     setEditingId(null);
     setFormData({
       name: '', mobileNumber: '', email: '', password: '',
-      location: '', landmark: '', address: '', pincode: '',
+      address: '', pincode: '',
       vehicleNumber: '', vehicleType: 'Motorcycle / Scooter'
     });
   };
@@ -415,19 +408,6 @@ const DeliveryBoys = () => {
                     <input name="vehicleNumber" value={formData.vehicleNumber} onChange={handleInputChange} placeholder="e.g. KL-07-AB-1234" className="form-input" />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Location *</label>
-                    <select required name="location" value={formData.location} onChange={handleInputChange} className="form-select">
-                      <option value="" disabled>Select Location</option>
-                      {keralaPlaces.map((place) => (
-                        <option key={place} value={place}>{place}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Landmark *</label>
-                    <input required name="landmark" value={formData.landmark} onChange={handleInputChange} placeholder="e.g. Near Bus Stand" className="form-input" />
-                  </div>
-                  <div className="form-group">
                     <label className="form-label">Pincode (6 Digits) *</label>
                     <input
                       required
@@ -442,10 +422,18 @@ const DeliveryBoys = () => {
                       className="form-input"
                     />
                   </div>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Full Address *</label>
-                  <textarea required name="address" value={formData.address} onChange={handleInputChange} placeholder="Enter complete home address..." className="form-input" />
+                  <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                    <label className="form-label">Address *</label>
+                    <textarea
+                      required
+                      name="address"
+                      value={formData.address}
+                      onChange={handleInputChange}
+                      placeholder="Enter complete address..."
+                      className="form-input"
+                      rows={2}
+                    />
+                  </div>
                 </div>
               </div>
               <div className="modal-footer">

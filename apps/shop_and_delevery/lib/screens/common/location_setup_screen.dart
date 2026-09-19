@@ -6,6 +6,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../shop_keeper/dashboard_screen.dart';
+import '../delevery_partner/delivery_partner_dashboard.dart';
 
 class LocationSetupScreen extends StatefulWidget {
   final String role; // 'Shopkeeper' or 'Delivery Boy'
@@ -65,6 +67,39 @@ class _LocationSetupScreenState extends State<LocationSetupScreen> with SingleTi
 
   Future<void> _determineInitialPosition({bool isManualTrigger = false}) async {
     setState(() => _isLoadingLocation = true);
+
+    // 1. If not a manual GPS trigger, check if location was already saved in Firestore
+    if (!isManualTrigger) {
+      try {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          final col = widget.role == 'Shopkeeper' ? 'shop_owners' : 'delivery_partners';
+          final docSnap = await FirebaseFirestore.instance.collection(col).doc(user.uid).get();
+          final data = docSnap.data();
+          if (data != null && data['latitude'] != null && data['longitude'] != null) {
+            final double? lat = (data['latitude'] as num?)?.toDouble();
+            final double? lon = (data['longitude'] as num?)?.toDouble();
+            if (lat != null && lon != null) {
+              final savedPos = LatLng(lat, lon);
+              if (mounted) {
+                setState(() {
+                  _currentPosition = savedPos;
+                  _userGpsPosition = savedPos;
+                  _currentAddress = data['pinnedAddress'] ?? data['location'] ?? data['address'] ?? 'Saved Store Location';
+                  _isLoadingLocation = false;
+                });
+                try {
+                  _mapController.move(savedPos, 16.5);
+                } catch (_) {}
+                return;
+              }
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('Error reading pre-existing location: $e');
+      }
+    }
 
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -236,14 +271,21 @@ class _LocationSetupScreenState extends State<LocationSetupScreen> with SingleTi
         'latitude': _currentPosition.latitude,
         'longitude': _currentPosition.longitude,
         'isLocationPinned': true,
+        'isLocationLogged': true,
         'pinnedAddress': _currentAddress,
+        'location': _currentAddress,
         'locationUpdatedAt': FieldValue.serverTimestamp(),
       };
 
-      // Update corresponding role collection
+      // Update corresponding role collection and users collection for consistency
       final String targetCollection = widget.role == 'Shopkeeper' ? 'shop_owners' : 'delivery_partners';
       await FirebaseFirestore.instance
           .collection(targetCollection)
+          .doc(user.uid)
+          .set(updatePayload, SetOptions(merge: true));
+
+      await FirebaseFirestore.instance
+          .collection('users')
           .doc(user.uid)
           .set(updatePayload, SetOptions(merge: true));
 
@@ -257,6 +299,18 @@ class _LocationSetupScreenState extends State<LocationSetupScreen> with SingleTi
 
         if (!widget.isInitialSetup) {
           Navigator.pop(context);
+        } else {
+          if (widget.role == 'Shopkeeper') {
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (_) => const DashboardScreen()),
+              (route) => false,
+            );
+          } else {
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (_) => const DeliveryPartnerDashboard()),
+              (route) => false,
+            );
+          }
         }
       }
     } catch (e) {
@@ -271,6 +325,37 @@ class _LocationSetupScreenState extends State<LocationSetupScreen> with SingleTi
     } finally {
       if (mounted) {
         setState(() => _isSaving = false);
+      }
+    }
+  }
+
+  Future<void> _skipLocationSetup() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final skipPayload = {
+        'isLocationLogged': true,
+      };
+      final String targetCollection = widget.role == 'Shopkeeper' ? 'shop_owners' : 'delivery_partners';
+      await FirebaseFirestore.instance
+          .collection(targetCollection)
+          .doc(user.uid)
+          .set(skipPayload, SetOptions(merge: true));
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .set(skipPayload, SetOptions(merge: true));
+    }
+    if (mounted) {
+      if (widget.role == 'Shopkeeper') {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const DashboardScreen()),
+          (route) => false,
+        );
+      } else {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const DeliveryPartnerDashboard()),
+          (route) => false,
+        );
       }
     }
   }
@@ -296,15 +381,20 @@ class _LocationSetupScreenState extends State<LocationSetupScreen> with SingleTi
         ),
         iconTheme: const IconThemeData(color: _textDark),
         actions: [
-          if (widget.isInitialSetup)
-            TextButton.icon(
-              onPressed: () => FirebaseAuth.instance.signOut(),
-              icon: const Icon(Icons.logout, size: 16, color: _textMuted),
-              label: const Text(
-                'Log Out',
-                style: TextStyle(color: _textMuted, fontSize: 13, fontWeight: FontWeight.w600),
+          if (widget.isInitialSetup) ...[
+            TextButton(
+              onPressed: _skipLocationSetup,
+              child: const Text(
+                'Skip for now',
+                style: TextStyle(color: _primaryCyan, fontSize: 13, fontWeight: FontWeight.bold),
               ),
             ),
+            IconButton(
+              tooltip: 'Log Out',
+              onPressed: () => FirebaseAuth.instance.signOut(),
+              icon: const Icon(Icons.logout, size: 18, color: _textMuted),
+            ),
+          ],
         ],
       ),
       body: Stack(
