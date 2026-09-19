@@ -144,13 +144,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
         SliverToBoxAdapter(child: _buildHeroSection()),
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.only(top: 24, bottom: 8, left: 16),
+            padding: const EdgeInsets.only(top: 24, bottom: 12, left: 16),
             child: Text(
-              'Collections',
+              'Shop by Category',
               style: TextStyle(
                 color: _textColor,
                 fontSize: 22,
-                fontWeight: FontWeight.bold,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.3,
               ),
             ),
           ),
@@ -720,7 +721,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _buildCategories() {
     return SizedBox(
-      height: 100,
+      height: 128,
       child: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection('categories')
@@ -768,39 +769,79 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     );
                   },
                   child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Container(
-                        width: 65,
-                        height: 65,
+                        width: 76,
+                        height: 76,
                         decoration: BoxDecoration(
-                          color: _cardColor,
                           shape: BoxShape.circle,
-                          border: Border.all(
-                            color: _lightBlue.withValues(alpha: 0.3),
-                            width: 1,
-                          ),
-                          image: imageUrl.isNotEmpty
-                              ? DecorationImage(
-                                  image: CachedNetworkImageProvider(imageUrl),
-                                  fit: BoxFit.cover,
-                                )
-                              : null,
+                          color: Colors.white,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.06),
+                              blurRadius: 10,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
                         ),
-                        child: imageUrl.isEmpty
-                            ? Icon(
-                                Icons.category,
-                                color: _lightBlue,
-                                size: 30,
-                              )
-                            : null,
+                        child: ClipOval(
+                          child: Container(
+                            color: Colors.white,
+                            child: Transform.scale(
+                              scale: 1.2,
+                              child: imageUrl.isNotEmpty
+                                  ? CachedNetworkImage(
+                                      imageUrl: imageUrl,
+                                      fit: BoxFit.contain,
+                                      placeholder: (context, url) => Container(
+                                        color: Colors.white,
+                                        child: const Center(
+                                          child: SizedBox(
+                                            width: 20,
+                                            height: 20,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: Color(0xFF00B4D8),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      errorWidget: (context, url, error) => Container(
+                                        color: Colors.white,
+                                        child: const Icon(
+                                          Icons.set_meal_rounded,
+                                          color: Color(0xFF0F172A),
+                                          size: 32,
+                                        ),
+                                      ),
+                                    )
+                                  : Container(
+                                      color: Colors.white,
+                                      child: const Icon(
+                                        Icons.set_meal_rounded,
+                                        color: Color(0xFF0F172A),
+                                        size: 32,
+                                      ),
+                                    ),
+                            ),
+                          ),
+                        ),
                       ),
                       const SizedBox(height: 8),
-                      Text(
-                        name,
-                        style: TextStyle(
-                          color: _textColor,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
+                      SizedBox(
+                        width: 82,
+                        child: Text(
+                          name,
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: _textColor,
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                            height: 1.15,
+                          ),
                         ),
                       ),
                     ],
