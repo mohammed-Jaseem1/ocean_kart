@@ -157,7 +157,7 @@ class _OrdersScreenState extends State<OrdersScreen> with AutomaticKeepAliveClie
     final filteredDocs = docs.where((doc) {
       final status = (doc.data() as Map<String, dynamic>)['status'] ?? 'pending';
       if (widget.isHistory) {
-        return status == 'completed' || status == 'delivered' || status == 'cancelled';
+        return status == 'completed' || status == 'delivered' || status == 'cancelled' || status == 'undelivered';
       } else {
         return status == 'pending' || status == 'ready_for_delivery' || status == 'out_for_delivery';
       }
@@ -217,7 +217,7 @@ class _OrdersScreenState extends State<OrdersScreen> with AutomaticKeepAliveClie
           statusColor = Colors.blue;
         } else if (status == 'out_for_delivery') {
           statusColor = Colors.teal;
-        } else if (status == 'cancelled') {
+        } else if (status == 'cancelled' || status == 'undelivered') {
           statusColor = Colors.red;
         }
 

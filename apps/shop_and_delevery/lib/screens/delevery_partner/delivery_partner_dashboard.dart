@@ -30,6 +30,45 @@ class _DeliveryPartnerDashboardState extends State<DeliveryPartnerDashboard> {
   static const Color _textMuted = Color(0xFF64748B);
   static const Color _cardBorder = Color(0xFFE2E8F0);
 
+  final Map<String, Map<String, dynamic>> _shopDataCache = {};
+  Map<String, dynamic> _partnerProfile = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchShopsCache();
+  }
+
+  Future<void> _fetchShopsCache() async {
+    try {
+      if (currentUser != null) {
+        final pDoc = await FirebaseFirestore.instance
+            .collection('delivery_partners')
+            .doc(currentUser!.uid)
+            .get();
+        if (pDoc.exists) {
+          _partnerProfile = pDoc.data() ?? {};
+        }
+      }
+      final snap = await FirebaseFirestore.instance.collection('shop_owners').get();
+      for (var doc in snap.docs) {
+        _shopDataCache[doc.id] = doc.data();
+      }
+      final usersSnap = await FirebaseFirestore.instance
+          .collection('users')
+          .where('role', isEqualTo: 'Shop Owner')
+          .get();
+      for (var doc in usersSnap.docs) {
+        if (!_shopDataCache.containsKey(doc.id)) {
+          _shopDataCache[doc.id] = doc.data();
+        }
+      }
+      if (mounted) setState(() {});
+    } catch (e) {
+      debugPrint('Error caching shops: $e');
+    }
+  }
+
   @override
   void dispose() {
     _searchController.dispose();
@@ -38,39 +77,235 @@ class _DeliveryPartnerDashboardState extends State<DeliveryPartnerDashboard> {
 
   Future<void> _acceptDelivery(String orderId) async {
     if (currentUser == null) return;
+    final orderRef = FirebaseFirestore.instance.collection('orders').doc(orderId);
+    String? customerId;
+    String? shopId;
+    final String shortOrderId = orderId.length > 8 ? orderId.substring(0, 8).toUpperCase() : orderId.toUpperCase();
+    final String partnerName = (_partnerProfile['name'] ?? currentUser!.displayName ?? 'Delivery Partner').toString();
+    final String partnerPhone = (_partnerProfile['mobileNumber'] ?? _partnerProfile['phone'] ?? '').toString();
+
     try {
-      await FirebaseFirestore.instance.collection('orders').doc(orderId).update(
-        {'status': 'out_for_delivery', 'deliveryBoyId': currentUser!.uid},
-      );
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        final snap = await transaction.get(orderRef);
+        if (!snap.exists) {
+          throw Exception('Order does not exist.');
+        }
+
+        final orderData = snap.data() as Map<String, dynamic>;
+        final currentStatus = (orderData['status'] ?? '').toString().toLowerCase();
+
+        // Concurrency lock: check status
+        if (currentStatus != 'ready_for_delivery' && currentStatus != 'ready_for_pickup') {
+          throw Exception('ALREADY_ACCEPTED');
+        }
+
+        customerId = orderData['userId']?.toString();
+        shopId = orderData['shopId']?.toString();
+
+        transaction.update(orderRef, {
+          'status': 'out_for_delivery',
+          'deliveryBoyId': currentUser!.uid,
+          if (partnerName.isNotEmpty) 'deliveryBoyName': partnerName,
+          if (partnerPhone.isNotEmpty) 'deliveryBoyPhone': partnerPhone,
+          'acceptedAt': FieldValue.serverTimestamp(),
+        });
+      });
+
+      // 1. Notify Customer
+      if (customerId != null && customerId!.isNotEmpty) {
+        try {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(customerId!)
+              .collection('notifications')
+              .add({
+            'title': 'Order Out for Delivery',
+            'body': 'Your order #$shortOrderId is out for delivery with $partnerName${partnerPhone.isNotEmpty ? ' ($partnerPhone)' : ''}.',
+            'type': 'order',
+            'orderId': orderId,
+            'isRead': false,
+            'read': false,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+        } catch (e) {
+          debugPrint('Error notifying customer: $e');
+        }
+      }
+
+      // 2. Notify Shop Owner
+      if (shopId != null && shopId!.isNotEmpty) {
+        try {
+          await FirebaseFirestore.instance
+              .collection('shop_owners')
+              .doc(shopId!)
+              .collection('notifications')
+              .add({
+            'title': 'Order Picked Up',
+            'body': 'Order #$shortOrderId was picked up for delivery by $partnerName.',
+            'type': 'order',
+            'orderId': orderId,
+            'isRead': false,
+            'read': false,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+        } catch (e) {
+          debugPrint('Error notifying shopkeeper: $e');
+        }
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Delivery Accepted!'),
+            content: Text('Delivery Accepted! Status set to Out for Delivery.'),
             backgroundColor: Color(0xFF10B981),
           ),
         );
       }
     } catch (e) {
       if (mounted) {
+        final isAlreadyAccepted = e.toString().contains('ALREADY_ACCEPTED');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to accept: $e'),
-            backgroundColor: Colors.red,
+            content: Text(
+              isAlreadyAccepted
+                  ? 'This order has already been accepted by another delivery partner.'
+                  : 'Failed to accept: $e',
+            ),
+            backgroundColor: isAlreadyAccepted ? Colors.orange : Colors.red,
           ),
         );
       }
     }
   }
 
-  Future<void> _markDelivered(String orderId) async {
+  Future<void> _markDelivered(String orderId, double total, {String? customerId, String? shopId}) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Confirm Cash Collection',
+          style: TextStyle(fontWeight: FontWeight.w800, color: _textDark, fontSize: 17),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Have you collected the full cash payment for this COD delivery?',
+              style: TextStyle(fontSize: 13.5, color: _textMuted, height: 1.4),
+            ),
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: _cardBorder),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Cash to Collect (COD):', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: _textDark)),
+                  Text(
+                    '₹${total.toStringAsFixed(0)}',
+                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Color(0xFF10B981)),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel', style: TextStyle(color: _textMuted, fontWeight: FontWeight.w600)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF10B981),
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text('Confirm & Deliver', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
     try {
-      await FirebaseFirestore.instance.collection('orders').doc(orderId).update(
-        {'status': 'completed'},
-      );
+      final orderRef = FirebaseFirestore.instance.collection('orders').doc(orderId);
+      final partnerName = (_partnerProfile['name'] ?? currentUser?.displayName ?? 'Delivery Partner').toString();
+      final String shortOrderId = orderId.length > 8 ? orderId.substring(0, 8).toUpperCase() : orderId.toUpperCase();
+
+      await orderRef.update({
+        'status': 'completed',
+        'paymentStatus': 'paid',
+        'deliveredAt': FieldValue.serverTimestamp(),
+      });
+
+      // 1. Increment Shopkeeper aggregated stats (completedOrders & totalRevenue)
+      if (shopId != null && shopId.isNotEmpty) {
+        try {
+          await FirebaseFirestore.instance.collection('shop_owners').doc(shopId).set({
+            'completedOrders': FieldValue.increment(1),
+            'totalRevenue': FieldValue.increment(total),
+          }, SetOptions(merge: true));
+        } catch (e) {
+          debugPrint('Error updating shop stats: $e');
+        }
+      }
+
+      // 2. Notify Customer (no keyboard emojis)
+      if (customerId != null && customerId.isNotEmpty) {
+        try {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(customerId)
+              .collection('notifications')
+              .add({
+            'title': 'Order Delivered',
+            'body': 'Your order #$shortOrderId has been successfully delivered. Thank you for shopping with OceanKart.',
+            'type': 'order',
+            'orderId': orderId,
+            'isRead': false,
+            'read': false,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+        } catch (e) {
+          debugPrint('Error notifying customer: $e');
+        }
+      }
+
+      // 3. Notify Shopkeeper (no keyboard emojis)
+      if (shopId != null && shopId.isNotEmpty) {
+        try {
+          await FirebaseFirestore.instance
+              .collection('shop_owners')
+              .doc(shopId)
+              .collection('notifications')
+              .add({
+            'title': 'Order Delivered by Partner',
+            'body': 'Order #$shortOrderId has been marked as delivered by $partnerName. Total amount: ₹${total.toStringAsFixed(0)}.',
+            'type': 'order',
+            'orderId': orderId,
+            'isRead': false,
+            'read': false,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+        } catch (e) {
+          debugPrint('Error notifying shopkeeper: $e');
+        }
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Marked as Delivered!'),
+            content: Text('Order Marked as Delivered! Payment collected.'),
             backgroundColor: Color(0xFF10B981),
           ),
         );
@@ -79,6 +314,228 @@ class _DeliveryPartnerDashboardState extends State<DeliveryPartnerDashboard> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  Future<void> _reportDeliveryIssue(String orderId, {String? customerId, String? shopId}) async {
+    String selectedReason = 'Customer unreachable / phone switched off';
+    final notesController = TextEditingController();
+
+    final reasons = [
+      'Customer unreachable / phone switched off',
+      'Customer refused delivery / COD payment',
+      'Incorrect / incomplete delivery address',
+      'Customer cancelled at doorstep',
+      'Delivery location inaccessible / bad weather',
+    ];
+
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          return Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+            ),
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.report_problem_outlined, color: Colors.redAccent, size: 22),
+                          SizedBox(width: 8),
+                          Text(
+                            'Unable to Deliver Order',
+                            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: _textDark),
+                          ),
+                        ],
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: _textMuted, size: 20),
+                        onPressed: () => Navigator.pop(ctx, false),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Select the reason this order could not be completed:',
+                    style: TextStyle(fontSize: 13, color: _textMuted),
+                  ),
+                  const SizedBox(height: 12),
+                  ...reasons.map((r) {
+                    final isSelected = selectedReason == r;
+                    return InkWell(
+                      onTap: () => setSheetState(() => selectedReason = r),
+                      borderRadius: BorderRadius.circular(10),
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: isSelected ? Colors.redAccent.withValues(alpha: 0.08) : const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: isSelected ? Colors.redAccent : _cardBorder,
+                            width: isSelected ? 1.5 : 1,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
+                              color: isSelected ? Colors.redAccent : _textMuted,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                r,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                                  color: isSelected ? Colors.redAccent.shade700 : _textDark,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: notesController,
+                    maxLines: 2,
+                    style: const TextStyle(fontSize: 13),
+                    decoration: InputDecoration(
+                      hintText: 'Additional notes / explanation (optional)',
+                      hintStyle: const TextStyle(fontSize: 12.5, color: _textMuted),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(color: _cardBorder),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: _cardBorder),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          child: const Text('Back', style: TextStyle(color: _textMuted, fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () => Navigator.pop(ctx, true),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.redAccent,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          child: const Text('Confirm Undelivered', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      final orderRef = FirebaseFirestore.instance.collection('orders').doc(orderId);
+      final partnerName = (_partnerProfile['name'] ?? currentUser?.displayName ?? 'Delivery Partner').toString();
+      final String shortOrderId = orderId.length > 8 ? orderId.substring(0, 8).toUpperCase() : orderId.toUpperCase();
+      final additionalNotes = notesController.text.trim();
+
+      await orderRef.update({
+        'status': 'undelivered',
+        'undeliveredReason': selectedReason,
+        if (additionalNotes.isNotEmpty) 'undeliveredNotes': additionalNotes,
+        'undeliveredAt': FieldValue.serverTimestamp(),
+      });
+
+      // 1. Notify Customer (no keyboard emojis)
+      if (customerId != null && customerId.isNotEmpty) {
+        try {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(customerId)
+              .collection('notifications')
+              .add({
+            'title': 'Delivery Attempt Unsuccessful',
+            'body': 'Your order #$shortOrderId could not be delivered: $selectedReason.',
+            'type': 'order',
+            'orderId': orderId,
+            'isRead': false,
+            'read': false,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+        } catch (e) {
+          debugPrint('Error notifying customer: $e');
+        }
+      }
+
+      // 2. Notify Shopkeeper (no keyboard emojis)
+      if (shopId != null && shopId.isNotEmpty) {
+        try {
+          await FirebaseFirestore.instance
+              .collection('shop_owners')
+              .doc(shopId)
+              .collection('notifications')
+              .add({
+            'title': 'Order Delivery Failed',
+            'body': 'Order #$shortOrderId could not be delivered by $partnerName. Reason: $selectedReason.',
+            'type': 'order',
+            'orderId': orderId,
+            'isRead': false,
+            'read': false,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+        } catch (e) {
+          debugPrint('Error notifying shopkeeper: $e');
+        }
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Order marked as undelivered. Customer and shopkeeper notified.'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update status: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -229,8 +686,9 @@ class _DeliveryPartnerDashboardState extends State<DeliveryPartnerDashboard> {
             totalOrders++;
             totalAmountCollected += amount;
 
-            if (data['createdAt'] != null && data['createdAt'] is Timestamp) {
-              final date = (data['createdAt'] as Timestamp).toDate();
+            final ts = data['deliveredAt'] ?? data['createdAt'];
+            if (ts is Timestamp) {
+              final date = ts.toDate();
               if (date.isAfter(startOfDay) || date.isAtSameMomentAs(startOfDay)) {
                 todayOrders++;
                 todayAmountCollected += amount;
@@ -847,6 +1305,7 @@ class _DeliveryPartnerDashboardState extends State<DeliveryPartnerDashboard> {
               _buildStatusChip('All', 'All'),
               _buildStatusChip('out_for_delivery', 'Out for Delivery'),
               _buildStatusChip('completed', 'Delivered'),
+              _buildStatusChip('undelivered', 'Undelivered'),
               _buildStatusChip('cancelled', 'Cancelled'),
             ],
           ),
@@ -1061,8 +1520,22 @@ class _DeliveryPartnerDashboardState extends State<DeliveryPartnerDashboard> {
         final double? deliveryLon = (data['deliveryLon'] as num?)?.toDouble();
         final items = data['items'] as List<dynamic>? ?? [];
 
+        // Store Pickup Details
+        final String orderShopId = (data['shopId'] ?? '').toString();
+        final cachedShop = _shopDataCache[orderShopId] ?? {};
+        final String storeName = (data['shopName'] ?? cachedShop['shopName'] ?? cachedShop['name'] ?? (orderShopId.isNotEmpty ? 'Store' : 'N/A')).toString();
+        final String storePhone = (data['shopPhone'] ?? cachedShop['phone'] ?? cachedShop['mobileNumber'] ?? '').toString();
+        final String storeAddress = (data['shopAddress'] ?? cachedShop['shopAddress'] ?? cachedShop['address'] ?? cachedShop['location'] ?? '').toString();
+        final double? storeLat = (cachedShop['latitude'] ?? cachedShop['lat'] ?? data['shopLat']) is num
+            ? ((cachedShop['latitude'] ?? cachedShop['lat'] ?? data['shopLat']) as num).toDouble()
+            : null;
+        final double? storeLon = (cachedShop['longitude'] ?? cachedShop['lon'] ?? cachedShop['lng'] ?? data['shopLon']) is num
+            ? ((cachedShop['longitude'] ?? cachedShop['lon'] ?? cachedShop['lng']) as num).toDouble()
+            : null;
+
         final bool isDelivered = status == 'completed' || status == 'delivered';
         final bool isOutForDelivery = status == 'out_for_delivery';
+        final bool isUndelivered = status == 'undelivered';
 
         String timeStr = 'N/A';
         if (data['createdAt'] is Timestamp) {
@@ -1136,17 +1609,27 @@ class _DeliveryPartnerDashboardState extends State<DeliveryPartnerDashboard> {
                                   ? const Color(0xFF10B981).withValues(alpha: 0.12)
                                   : (isOutForDelivery
                                       ? Colors.amber.withValues(alpha: 0.15)
-                                      : Colors.grey.withValues(alpha: 0.12)),
+                                      : (isUndelivered
+                                          ? Colors.red.withValues(alpha: 0.12)
+                                          : Colors.grey.withValues(alpha: 0.12))),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
-                              isDelivered ? 'Delivered' : status.replaceAll('_', ' ').toUpperCase(),
+                              isDelivered
+                                  ? 'Delivered'
+                                  : (isUndelivered
+                                      ? 'Undelivered'
+                                      : status.replaceAll('_', ' ').toUpperCase()),
                               style: TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.bold,
                                 color: isDelivered
                                     ? const Color(0xFF10B981)
-                                    : (isOutForDelivery ? Colors.amber.shade900 : _textMuted),
+                                    : (isOutForDelivery
+                                        ? Colors.amber.shade900
+                                        : (isUndelivered
+                                            ? Colors.red.shade700
+                                            : _textMuted)),
                               ),
                             ),
                           ),
@@ -1171,24 +1654,172 @@ class _DeliveryPartnerDashboardState extends State<DeliveryPartnerDashboard> {
                 const Divider(height: 1, color: _cardBorder),
                 const SizedBox(height: 12),
 
-                // Customer Details
+                // 1. Store Pickup Details Section
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(5),
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFF1F5F9),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.person_outline, size: 15, color: _textDark),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(5),
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFE0F2FE),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.storefront_outlined, size: 15, color: _primaryCyan),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          storeName,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13.5,
+                            color: _textDark,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 8),
-                    const Text(
-                      'Customer Details',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13.5,
-                        color: _textDark,
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF00B4D8).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Text(
+                        'PICKUP',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: _primaryCyan,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                if (storePhone.isNotEmpty && storePhone != 'N/A') ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      const SizedBox(width: 4),
+                      const Icon(Icons.phone_outlined, size: 14, color: _textMuted),
+                      const SizedBox(width: 8),
+                      InkWell(
+                        onTap: () async {
+                          final uri = Uri.parse('tel:$storePhone');
+                          if (await canLaunchUrl(uri)) {
+                            await launchUrl(uri);
+                          }
+                        },
+                        child: Text(
+                          storePhone,
+                          style: const TextStyle(
+                            color: _primaryCyan,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                if (storeAddress.isNotEmpty && storeAddress != 'N/A') ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(width: 4),
+                      const Icon(Icons.location_on_outlined, size: 15, color: _textMuted),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              storeAddress,
+                              style: const TextStyle(
+                                color: _textDark,
+                                fontSize: 12.5,
+                                height: 1.3,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            InkWell(
+                              onTap: () async {
+                                final query = (storeLat != null && storeLon != null)
+                                    ? '$storeLat,$storeLon'
+                                    : Uri.encodeComponent(storeAddress);
+                                final url = Uri.parse('https://www.google.com/maps/search/?api=1&query=$query');
+                                if (await canLaunchUrl(url)) {
+                                  await launchUrl(url);
+                                }
+                              },
+                              child: const Row(
+                                children: [
+                                  Icon(Icons.directions_outlined, size: 14, color: _primaryCyan),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'Navigate to Store',
+                                    style: TextStyle(
+                                      color: _primaryCyan,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+
+                const SizedBox(height: 10),
+                const Divider(height: 1, color: _cardBorder),
+                const SizedBox(height: 12),
+
+                // 2. Customer Details Section
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(5),
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFF1F5F9),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.person_outline, size: 15, color: _textDark),
+                        ),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Customer Details',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13.5,
+                            color: _textDark,
+                          ),
+                        ),
+                      ],
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF10B981).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Text(
+                        'DROP-OFF',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF10B981),
+                          letterSpacing: 0.5,
+                        ),
                       ),
                     ),
                   ],
@@ -1362,28 +1993,64 @@ class _DeliveryPartnerDashboardState extends State<DeliveryPartnerDashboard> {
                     ),
                   )
                 else if (isOutForDelivery)
-                  SizedBox(
-                    width: double.infinity,
-                    height: 44,
-                    child: ElevatedButton.icon(
-                      onPressed: () => _markDelivered(orderId),
-                      icon: const Icon(Icons.done_all, color: Colors.white, size: 17),
-                      label: const Text(
-                        'Mark as Delivered',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14.5,
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 1,
+                        child: OutlinedButton.icon(
+                          onPressed: () => _reportDeliveryIssue(
+                            orderId,
+                            customerId: data['userId']?.toString(),
+                            shopId: data['shopId']?.toString(),
+                          ),
+                          icon: const Icon(Icons.report_problem_outlined, size: 15, color: Colors.redAccent),
+                          label: const Text(
+                            'Issue',
+                            style: TextStyle(
+                              color: Colors.redAccent,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12.5,
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: Colors.redAccent),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
                         ),
                       ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF10B981),
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        flex: 2,
+                        child: ElevatedButton.icon(
+                          onPressed: () => _markDelivered(
+                            orderId,
+                            total,
+                            customerId: data['userId']?.toString(),
+                            shopId: data['shopId']?.toString(),
+                          ),
+                          icon: const Icon(Icons.done_all, color: Colors.white, size: 17),
+                          label: const Text(
+                            'Mark as Delivered',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13.5,
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF10B981),
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
                         ),
                       ),
-                    ),
+                    ],
                   )
                 else if (isDelivered)
                   Container(
@@ -1405,6 +2072,36 @@ class _DeliveryPartnerDashboardState extends State<DeliveryPartnerDashboard> {
                             color: Color(0xFF10B981),
                             fontWeight: FontWeight.bold,
                             fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else if (isUndelivered)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.redAccent.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.redAccent.withValues(alpha: 0.3)),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.error_outline, color: Colors.redAccent, size: 18),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            data['undeliveredReason'] != null
+                                ? 'Undelivered: ${data['undeliveredReason']}'
+                                : 'Delivery Unsuccessful',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Colors.redAccent,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
                           ),
                         ),
                       ],

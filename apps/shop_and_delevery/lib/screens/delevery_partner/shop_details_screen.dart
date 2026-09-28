@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:geolocator/geolocator.dart';
 
 class ShopDetailsScreen extends StatefulWidget {
   final String shopId;
@@ -25,12 +26,36 @@ class _ShopDetailsScreenState extends State<ShopDetailsScreen> with SingleTicker
 
   bool _isLoading = true;
   Map<String, dynamic> _shopData = {};
+  List<String> _partnerAssignedShopIds = [];
+  double? _partnerLat;
+  double? _partnerLon;
+  String _partnerName = '';
+  String _partnerPhone = '';
 
   static const Color _primaryCyan = Color(0xFF00B4D8);
   static const Color _textDark = Color(0xFF0F172A);
   static const Color _textMuted = Color(0xFF64748B);
   static const Color _cardBorder = Color(0xFFE2E8F0);
   static const Color _successGreen = Color(0xFF10B981);
+
+  bool get _isShopAssigned => _partnerAssignedShopIds.contains(widget.shopId);
+
+  String? get _distanceText {
+    final double? shopLat = (_shopData['latitude'] ?? _shopData['lat']) is num
+        ? ((_shopData['latitude'] ?? _shopData['lat']) as num).toDouble()
+        : null;
+    final double? shopLon = (_shopData['longitude'] ?? _shopData['lon'] ?? _shopData['lng']) is num
+        ? ((_shopData['longitude'] ?? _shopData['lon'] ?? _shopData['lng']) as num).toDouble()
+        : null;
+
+    if (_partnerLat != null && _partnerLon != null && shopLat != null && shopLon != null) {
+      final meters = Geolocator.distanceBetween(_partnerLat!, _partnerLon!, shopLat, shopLon);
+      return meters >= 1000
+          ? '${(meters / 1000).toStringAsFixed(1)} km away'
+          : '${meters.toStringAsFixed(0)} m away';
+    }
+    return null;
+  }
 
   @override
   void initState() {
@@ -40,7 +65,7 @@ class _ShopDetailsScreenState extends State<ShopDetailsScreen> with SingleTicker
       _shopData = widget.initialShopData!;
       _isLoading = false;
     }
-    _fetchShopDetails();
+    _fetchDetails();
   }
 
   @override
@@ -49,42 +74,46 @@ class _ShopDetailsScreenState extends State<ShopDetailsScreen> with SingleTicker
     super.dispose();
   }
 
-  Future<void> _fetchShopDetails() async {
-    if (widget.shopId.isEmpty) {
-      setState(() => _isLoading = false);
-      return;
-    }
-
+  Future<void> _fetchDetails() async {
     try {
-      // 1. Try shop_owners collection
-      final shopDoc = await FirebaseFirestore.instance
-          .collection('shop_owners')
-          .doc(widget.shopId)
-          .get();
-
-      if (shopDoc.exists && mounted) {
-        setState(() {
-          _shopData = shopDoc.data() as Map<String, dynamic>;
-          _isLoading = false;
-        });
-        return;
+      // 1. Fetch current delivery partner profile for store assignments & location
+      if (currentUser != null) {
+        final pDoc = await FirebaseFirestore.instance
+            .collection('delivery_partners')
+            .doc(currentUser!.uid)
+            .get();
+        if (pDoc.exists) {
+          final pData = pDoc.data() ?? {};
+          _partnerAssignedShopIds = List<String>.from(pData['assignedShopIds'] ?? []);
+          _partnerLat = (pData['latitude'] as num?)?.toDouble();
+          _partnerLon = (pData['longitude'] as num?)?.toDouble();
+          _partnerName = (pData['name'] ?? currentUser?.displayName ?? 'Delivery Partner').toString();
+          _partnerPhone = (pData['mobileNumber'] ?? pData['phone'] ?? '').toString();
+        }
       }
 
-      // 2. Fallback to users collection
-      final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(widget.shopId)
-          .get();
+      // 2. Fetch Shop details
+      if (widget.shopId.isNotEmpty) {
+        final shopDoc = await FirebaseFirestore.instance
+            .collection('shop_owners')
+            .doc(widget.shopId)
+            .get();
 
-      if (userDoc.exists && mounted) {
-        setState(() {
-          _shopData = userDoc.data() as Map<String, dynamic>;
-          _isLoading = false;
-        });
-      } else if (mounted) {
-        setState(() => _isLoading = false);
+        if (shopDoc.exists) {
+          _shopData = shopDoc.data() as Map<String, dynamic>;
+        } else {
+          final userDoc = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(widget.shopId)
+              .get();
+          if (userDoc.exists) {
+            _shopData = userDoc.data() as Map<String, dynamic>;
+          }
+        }
       }
     } catch (e) {
+      debugPrint('Error fetching details in ShopDetailsScreen: $e');
+    } finally {
       if (mounted) {
         setState(() => _isLoading = false);
       }
@@ -106,8 +135,18 @@ class _ShopDetailsScreenState extends State<ShopDetailsScreen> with SingleTicker
 
   Future<void> _openDirections(String address) async {
     if (address.isEmpty || address == 'N/A') return;
-    final encoded = Uri.encodeComponent(address);
-    final url = Uri.parse('https://www.google.com/maps/search/?api=1&query=$encoded');
+    final double? shopLat = (_shopData['latitude'] ?? _shopData['lat']) is num
+        ? ((_shopData['latitude'] ?? _shopData['lat']) as num).toDouble()
+        : null;
+    final double? shopLon = (_shopData['longitude'] ?? _shopData['lon'] ?? _shopData['lng']) is num
+        ? ((_shopData['longitude'] ?? _shopData['lon'] ?? _shopData['lng']) as num).toDouble()
+        : null;
+
+    final query = (shopLat != null && shopLon != null)
+        ? '$shopLat,$shopLon'
+        : Uri.encodeComponent(address);
+
+    final url = Uri.parse('https://www.google.com/maps/search/?api=1&query=$query');
     if (await canLaunchUrl(url)) {
       await launchUrl(url, mode: LaunchMode.externalApplication);
     } else if (mounted) {
@@ -119,37 +158,248 @@ class _ShopDetailsScreenState extends State<ShopDetailsScreen> with SingleTicker
 
   Future<void> _acceptDelivery(String orderId) async {
     if (currentUser == null) return;
-    try {
-      await FirebaseFirestore.instance.collection('orders').doc(orderId).update({
-        'status': 'out_for_delivery',
-        'deliveryBoyId': currentUser!.uid,
-      });
+
+    if (!_isShopAssigned) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Delivery Accepted!'),
+            content: Text('Access Denied: This store is not assigned to you by OceanKart Admin.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    final orderRef = FirebaseFirestore.instance.collection('orders').doc(orderId);
+    String? customerId;
+    String? shopId;
+    final String shortOrderId = orderId.length > 8 ? orderId.substring(0, 8).toUpperCase() : orderId.toUpperCase();
+    final String partnerName = _partnerName.isNotEmpty ? _partnerName : 'Delivery Partner';
+
+    try {
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        final snap = await transaction.get(orderRef);
+        if (!snap.exists) {
+          throw Exception('Order does not exist.');
+        }
+
+        final orderData = snap.data() as Map<String, dynamic>;
+        final currentStatus = (orderData['status'] ?? '').toString().toLowerCase();
+
+        // Concurrency lock: check status
+        if (currentStatus != 'ready_for_delivery' && currentStatus != 'ready_for_pickup') {
+          throw Exception('ALREADY_ACCEPTED');
+        }
+
+        customerId = orderData['userId']?.toString();
+        shopId = orderData['shopId']?.toString();
+
+        transaction.update(orderRef, {
+          'status': 'out_for_delivery',
+          'deliveryBoyId': currentUser!.uid,
+          if (_partnerName.isNotEmpty) 'deliveryBoyName': _partnerName,
+          if (_partnerPhone.isNotEmpty) 'deliveryBoyPhone': _partnerPhone,
+          'acceptedAt': FieldValue.serverTimestamp(),
+        });
+      });
+
+      // 1. Notify Customer
+      if (customerId != null && customerId!.isNotEmpty) {
+        try {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(customerId!)
+              .collection('notifications')
+              .add({
+            'title': 'Order Out for Delivery',
+            'body': 'Your order #$shortOrderId is out for delivery with $partnerName${_partnerPhone.isNotEmpty ? ' ($_partnerPhone)' : ''}.',
+            'type': 'order',
+            'orderId': orderId,
+            'isRead': false,
+            'read': false,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+        } catch (e) {
+          debugPrint('Error notifying customer: $e');
+        }
+      }
+
+      // 2. Notify Shop Owner
+      if (shopId != null && shopId!.isNotEmpty) {
+        try {
+          await FirebaseFirestore.instance
+              .collection('shop_owners')
+              .doc(shopId!)
+              .collection('notifications')
+              .add({
+            'title': 'Order Picked Up',
+            'body': 'Order #$shortOrderId was picked up for delivery by $partnerName.',
+            'type': 'order',
+            'orderId': orderId,
+            'isRead': false,
+            'read': false,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+        } catch (e) {
+          debugPrint('Error notifying shopkeeper: $e');
+        }
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Delivery Accepted! Status set to Out for Delivery.'),
             backgroundColor: _successGreen,
           ),
         );
       }
     } catch (e) {
       if (mounted) {
+        final isAlreadyAccepted = e.toString().contains('ALREADY_ACCEPTED');
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to accept: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text(
+              isAlreadyAccepted
+                  ? 'This order has already been accepted by another delivery partner.'
+                  : 'Failed to accept: $e',
+            ),
+            backgroundColor: isAlreadyAccepted ? Colors.orange : Colors.red,
+          ),
         );
       }
     }
   }
 
-  Future<void> _markDelivered(String orderId) async {
+  Future<void> _markDelivered(String orderId, double total, {String? customerId, String? shopId}) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Confirm Cash Collection',
+          style: TextStyle(fontWeight: FontWeight.w800, color: _textDark, fontSize: 17),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Have you collected the full cash payment for this COD delivery?',
+              style: TextStyle(fontSize: 13.5, color: _textMuted, height: 1.4),
+            ),
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: _cardBorder),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Cash to Collect (COD):', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: _textDark)),
+                  Text(
+                    '₹${total.toStringAsFixed(0)}',
+                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: _successGreen),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel', style: TextStyle(color: _textMuted, fontWeight: FontWeight.w600)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _successGreen,
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text('Confirm & Deliver', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
     try {
-      await FirebaseFirestore.instance.collection('orders').doc(orderId).update({
+      final orderRef = FirebaseFirestore.instance.collection('orders').doc(orderId);
+      final partnerName = _partnerName.isNotEmpty ? _partnerName : 'Delivery Partner';
+      final String shortOrderId = orderId.length > 8 ? orderId.substring(0, 8).toUpperCase() : orderId.toUpperCase();
+      final targetShopId = shopId != null && shopId.isNotEmpty ? shopId : widget.shopId;
+
+      await orderRef.update({
         'status': 'completed',
+        'deliveredAt': FieldValue.serverTimestamp(),
+        'paymentStatus': 'paid',
       });
+
+      // 1. Increment Shopkeeper aggregated stats (completedOrders & totalRevenue)
+      if (targetShopId.isNotEmpty) {
+        try {
+          await FirebaseFirestore.instance.collection('shop_owners').doc(targetShopId).set({
+            'completedOrders': FieldValue.increment(1),
+            'totalRevenue': FieldValue.increment(total),
+          }, SetOptions(merge: true));
+        } catch (e) {
+          debugPrint('Error updating shop stats: $e');
+        }
+      }
+
+      // 2. Notify Customer (no keyboard emojis)
+      if (customerId != null && customerId.isNotEmpty) {
+        try {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(customerId)
+              .collection('notifications')
+              .add({
+            'title': 'Order Delivered',
+            'body': 'Your order #$shortOrderId has been successfully delivered. Thank you for shopping with OceanKart.',
+            'type': 'order',
+            'orderId': orderId,
+            'isRead': false,
+            'read': false,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+        } catch (e) {
+          debugPrint('Error notifying customer: $e');
+        }
+      }
+
+      // 3. Notify Shopkeeper (no keyboard emojis)
+      if (targetShopId.isNotEmpty) {
+        try {
+          await FirebaseFirestore.instance
+              .collection('shop_owners')
+              .doc(targetShopId)
+              .collection('notifications')
+              .add({
+            'title': 'Order Delivered by Partner',
+            'body': 'Order #$shortOrderId has been marked as delivered by $partnerName. Total amount: ₹${total.toStringAsFixed(0)}.',
+            'type': 'order',
+            'orderId': orderId,
+            'isRead': false,
+            'read': false,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+        } catch (e) {
+          debugPrint('Error notifying shopkeeper: $e');
+        }
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Marked as Delivered!'),
+            content: Text('Order Marked as Delivered! Payment collected.'),
             backgroundColor: _successGreen,
           ),
         );
@@ -158,6 +408,229 @@ class _ShopDetailsScreenState extends State<ShopDetailsScreen> with SingleTicker
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to update: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  Future<void> _reportDeliveryIssue(String orderId, {String? customerId, String? shopId}) async {
+    String selectedReason = 'Customer unreachable / phone switched off';
+    final notesController = TextEditingController();
+
+    final reasons = [
+      'Customer unreachable / phone switched off',
+      'Customer refused delivery / COD payment',
+      'Incorrect / incomplete delivery address',
+      'Customer cancelled at doorstep',
+      'Delivery location inaccessible / bad weather',
+    ];
+
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          return Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+            ),
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.report_problem_outlined, color: Colors.redAccent, size: 22),
+                          SizedBox(width: 8),
+                          Text(
+                            'Unable to Deliver Order',
+                            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: _textDark),
+                          ),
+                        ],
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: _textMuted, size: 20),
+                        onPressed: () => Navigator.pop(ctx, false),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Select the reason this order could not be completed:',
+                    style: TextStyle(fontSize: 13, color: _textMuted),
+                  ),
+                  const SizedBox(height: 12),
+                  ...reasons.map((r) {
+                    final isSelected = selectedReason == r;
+                    return InkWell(
+                      onTap: () => setSheetState(() => selectedReason = r),
+                      borderRadius: BorderRadius.circular(10),
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: isSelected ? Colors.redAccent.withValues(alpha: 0.08) : const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: isSelected ? Colors.redAccent : _cardBorder,
+                            width: isSelected ? 1.5 : 1,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
+                              color: isSelected ? Colors.redAccent : _textMuted,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                r,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                                  color: isSelected ? Colors.redAccent.shade700 : _textDark,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: notesController,
+                    maxLines: 2,
+                    style: const TextStyle(fontSize: 13),
+                    decoration: InputDecoration(
+                      hintText: 'Additional notes / explanation (optional)',
+                      hintStyle: const TextStyle(fontSize: 12.5, color: _textMuted),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(color: _cardBorder),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: _cardBorder),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          child: const Text('Back', style: TextStyle(color: _textMuted, fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () => Navigator.pop(ctx, true),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.redAccent,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          child: const Text('Confirm Undelivered', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      final orderRef = FirebaseFirestore.instance.collection('orders').doc(orderId);
+      final partnerName = _partnerName.isNotEmpty ? _partnerName : 'Delivery Partner';
+      final String shortOrderId = orderId.length > 8 ? orderId.substring(0, 8).toUpperCase() : orderId.toUpperCase();
+      final targetShopId = shopId != null && shopId.isNotEmpty ? shopId : widget.shopId;
+      final additionalNotes = notesController.text.trim();
+
+      await orderRef.update({
+        'status': 'undelivered',
+        'undeliveredReason': selectedReason,
+        if (additionalNotes.isNotEmpty) 'undeliveredNotes': additionalNotes,
+        'undeliveredAt': FieldValue.serverTimestamp(),
+      });
+
+      // 1. Notify Customer (no keyboard emojis)
+      if (customerId != null && customerId.isNotEmpty) {
+        try {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(customerId)
+              .collection('notifications')
+              .add({
+            'title': 'Delivery Attempt Unsuccessful',
+            'body': 'Your order #$shortOrderId could not be delivered: $selectedReason.',
+            'type': 'order',
+            'orderId': orderId,
+            'isRead': false,
+            'read': false,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+        } catch (e) {
+          debugPrint('Error notifying customer: $e');
+        }
+      }
+
+      // 2. Notify Shopkeeper (no keyboard emojis)
+      if (targetShopId.isNotEmpty) {
+        try {
+          await FirebaseFirestore.instance
+              .collection('shop_owners')
+              .doc(targetShopId)
+              .collection('notifications')
+              .add({
+            'title': 'Order Delivery Failed',
+            'body': 'Order #$shortOrderId could not be delivered by $partnerName. Reason: $selectedReason.',
+            'type': 'order',
+            'orderId': orderId,
+            'isRead': false,
+            'read': false,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+        } catch (e) {
+          debugPrint('Error notifying shopkeeper: $e');
+        }
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Order marked as undelivered. Customer and shopkeeper notified.'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update status: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -216,6 +689,33 @@ class _ShopDetailsScreenState extends State<ShopDetailsScreen> with SingleTicker
                         children: [
                           // Store Hero Card
                           _buildStoreHeroCard(displayName, isShopActive),
+                          if (!_isShopAssigned) ...[
+                            const SizedBox(height: 10),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFEF2F2),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: const Color(0xFFFECACA)),
+                              ),
+                              child: const Row(
+                                children: [
+                                  Icon(Icons.warning_amber_rounded, color: Color(0xFFDC2626), size: 18),
+                                  SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      'This store is not assigned to you. OceanKart Admin manages store assignments.',
+                                      style: TextStyle(
+                                        color: Color(0xFFDC2626),
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                           const SizedBox(height: 14),
 
                           // Contact & Location Card
@@ -305,8 +805,10 @@ class _ShopDetailsScreenState extends State<ShopDetailsScreen> with SingleTicker
                     color: Colors.white,
                   ),
                 ),
-                const SizedBox(height: 4),
-                Row(
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
                   children: [
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -334,23 +836,47 @@ class _ShopDetailsScreenState extends State<ShopDetailsScreen> with SingleTicker
                         ],
                       ),
                     ),
-                    const SizedBox(width: 6),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
-                        color: _successGreen.withValues(alpha: 0.35),
+                        color: _isShopAssigned
+                            ? _successGreen.withValues(alpha: 0.35)
+                            : Colors.red.withValues(alpha: 0.35),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(color: Colors.white.withValues(alpha: 0.4)),
                       ),
-                      child: const Text(
-                        'Assigned to You',
-                        style: TextStyle(
+                      child: Text(
+                        _isShopAssigned ? 'Assigned to You' : 'Not Assigned',
+                        style: const TextStyle(
                           color: Colors.white,
                           fontSize: 11.5,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                     ),
+                    if (_distanceText != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.25),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.near_me_outlined, size: 12, color: Colors.white),
+                            const SizedBox(width: 4),
+                            Text(
+                              _distanceText!,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                   ],
                 ),
               ],
@@ -481,7 +1007,7 @@ class _ShopDetailsScreenState extends State<ShopDetailsScreen> with SingleTicker
           final data = d.data() as Map<String, dynamic>;
           final status = (data['status'] ?? '').toString().toLowerCase();
           final boyId = data['deliveryBoyId'];
-          return (status == 'pending' || status == 'ready_for_pickup' || status == 'placed') &&
+          return (status == 'ready_for_delivery' || status == 'ready_for_pickup') &&
               (boyId == null || boyId == '');
         }).length;
 
@@ -572,7 +1098,7 @@ class _ShopDetailsScreenState extends State<ShopDetailsScreen> with SingleTicker
           final boyId = data['deliveryBoyId'];
 
           if (filter == 'available') {
-            return (status == 'pending' || status == 'ready_for_pickup' || status == 'placed') &&
+            return (status == 'ready_for_delivery' || status == 'ready_for_pickup') &&
                 (boyId == null || boyId == '');
           } else if (filter == 'active') {
             return (status == 'out_for_delivery' || status == 'accepted' || status == 'in_transit') &&
@@ -653,6 +1179,7 @@ class _ShopDetailsScreenState extends State<ShopDetailsScreen> with SingleTicker
     final isAvailable = filter == 'available';
     final isActive = filter == 'active';
     final isCompleted = filter == 'completed';
+    final isUndelivered = data['status'] == 'undelivered';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -745,14 +1272,16 @@ class _ShopDetailsScreenState extends State<ShopDetailsScreen> with SingleTicker
                 width: double.infinity,
                 height: 38,
                 child: ElevatedButton.icon(
-                  onPressed: () => _acceptDelivery(orderId),
-                  icon: const Icon(Icons.check, size: 16, color: Colors.white),
-                  label: const Text(
-                    'Accept Delivery',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white),
+                  onPressed: _isShopAssigned ? () => _acceptDelivery(orderId) : null,
+                  icon: Icon(_isShopAssigned ? Icons.check : Icons.lock_outline, size: 16, color: Colors.white),
+                  label: Text(
+                    _isShopAssigned ? 'Accept Delivery' : 'Store Not Assigned',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white),
                   ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: _primaryCyan,
+                    backgroundColor: _isShopAssigned ? _primaryCyan : Colors.grey.shade400,
+                    disabledBackgroundColor: Colors.grey.shade300,
+                    disabledForegroundColor: Colors.grey.shade600,
                     elevation: 0,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
@@ -761,33 +1290,59 @@ class _ShopDetailsScreenState extends State<ShopDetailsScreen> with SingleTicker
             else if (isActive)
               Row(
                 children: [
-                  if (customerPhone.toString().isNotEmpty)
+                  if (customerPhone.toString().isNotEmpty) ...[
                     Expanded(
                       flex: 1,
                       child: OutlinedButton.icon(
                         onPressed: () => _makePhoneCall(customerPhone.toString()),
-                        icon: const Icon(Icons.phone, size: 15, color: _primaryCyan),
-                        label: const Text('Call', style: TextStyle(color: _primaryCyan, fontSize: 12, fontWeight: FontWeight.bold)),
+                        icon: const Icon(Icons.phone, size: 14, color: _primaryCyan),
+                        label: const Text('Call', style: TextStyle(color: _primaryCyan, fontSize: 11.5, fontWeight: FontWeight.bold)),
                         style: OutlinedButton.styleFrom(
                           side: const BorderSide(color: _primaryCyan),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
                         ),
                       ),
                     ),
-                  if (customerPhone.toString().isNotEmpty) const SizedBox(width: 8),
+                    const SizedBox(width: 6),
+                  ],
+                  Expanded(
+                    flex: 1,
+                    child: OutlinedButton.icon(
+                      onPressed: () => _reportDeliveryIssue(
+                        orderId,
+                        customerId: data['userId']?.toString(),
+                        shopId: (data['shopId'] ?? widget.shopId)?.toString(),
+                      ),
+                      icon: const Icon(Icons.report_problem_outlined, size: 14, color: Colors.redAccent),
+                      label: const Text('Issue', style: TextStyle(color: Colors.redAccent, fontSize: 11.5, fontWeight: FontWeight.bold)),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Colors.redAccent),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
                   Expanded(
                     flex: 2,
                     child: ElevatedButton.icon(
-                      onPressed: () => _markDelivered(orderId),
-                      icon: const Icon(Icons.check_circle_outline, size: 16, color: Colors.white),
+                      onPressed: () => _markDelivered(
+                        orderId,
+                        (totalAmount is num) ? totalAmount.toDouble() : double.tryParse(totalAmount.toString()) ?? 0.0,
+                        customerId: data['userId']?.toString(),
+                        shopId: (data['shopId'] ?? widget.shopId)?.toString(),
+                      ),
+                      icon: const Icon(Icons.check_circle_outline, size: 15, color: Colors.white),
                       label: const Text(
                         'Mark Delivered',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5, color: Colors.white),
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.white),
                       ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: _successGreen,
                         elevation: 0,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
                       ),
                     ),
                   ),
@@ -809,6 +1364,31 @@ class _ShopDetailsScreenState extends State<ShopDetailsScreen> with SingleTicker
                     Text(
                       'Delivered Successfully',
                       style: TextStyle(color: _successGreen, fontWeight: FontWeight.bold, fontSize: 12),
+                    ),
+                  ],
+                ),
+              )
+            else if (isUndelivered)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+                decoration: BoxDecoration(
+                  color: Colors.redAccent.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.error_outline, color: Colors.redAccent, size: 14),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        data['undeliveredReason'] != null
+                            ? 'Undelivered: ${data['undeliveredReason']}'
+                            : 'Delivery Unsuccessful',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 11.5),
+                      ),
                     ),
                   ],
                 ),

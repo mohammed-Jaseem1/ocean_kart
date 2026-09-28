@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:geolocator/geolocator.dart';
 import 'shop_details_screen.dart';
-import 'select_shops_screen.dart';
 
 class AssignedStoresScreen extends StatefulWidget {
   const AssignedStoresScreen({super.key});
@@ -64,11 +64,10 @@ class _AssignedStoresScreenState extends State<AssignedStoresScreen> {
     }
   }
 
-
-  Future<void> _openDirections(String address) async {
+  Future<void> _openDirections(String address, [double? lat, double? lon]) async {
     if (address.isEmpty || address == 'N/A') return;
-    final encoded = Uri.encodeComponent(address);
-    final url = Uri.parse('https://www.google.com/maps/search/?api=1&query=$encoded');
+    final query = (lat != null && lon != null) ? '$lat,$lon' : Uri.encodeComponent(address);
+    final url = Uri.parse('https://www.google.com/maps/search/?api=1&query=$query');
     if (await canLaunchUrl(url)) {
       await launchUrl(url, mode: LaunchMode.externalApplication);
     } else if (mounted) {
@@ -102,18 +101,6 @@ class _AssignedStoresScreenState extends State<AssignedStoresScreen> {
           ),
         ),
         iconTheme: const IconThemeData(color: _textDark),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add_business_outlined, color: _primaryCyan),
-            tooltip: 'Request / Select Stores',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const SelectShopsScreen()),
-              ).then((_) => _fetchAllShopsDetails());
-            },
-          ),
-        ],
       ),
       body: StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance.collection('delivery_partners').doc(currentUser!.uid).snapshots(),
@@ -204,26 +191,19 @@ class _AssignedStoresScreenState extends State<AssignedStoresScreen> {
                             color: _textDark,
                           ),
                         ),
-                        InkWell(
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (_) => const SelectShopsScreen()),
-                            ).then((_) => _fetchAllShopsDetails());
-                          },
-                          child: const Row(
-                            children: [
-                              Text(
-                                'Manage Stores',
-                                style: TextStyle(
-                                  fontSize: 12.5,
-                                  fontWeight: FontWeight.bold,
-                                  color: _primaryCyan,
-                                ),
-                              ),
-                              SizedBox(width: 2),
-                              Icon(Icons.chevron_right, size: 16, color: _primaryCyan),
-                            ],
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: _primaryCyan.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Text(
+                            'Admin Managed',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: _primaryCyan,
+                            ),
                           ),
                         ),
                       ],
@@ -250,8 +230,10 @@ class _AssignedStoresScreenState extends State<AssignedStoresScreen> {
                           final shopId = item['id'] as String;
                           final shopName = item['name'] as String;
                           final shopData = item['data'] as Map<String, dynamic>;
+                          final double? pLat = (userData['latitude'] as num?)?.toDouble();
+                          final double? pLon = (userData['longitude'] as num?)?.toDouble();
 
-                          return _buildStoreCard(shopId, shopName, shopData);
+                          return _buildStoreCard(shopId, shopName, shopData, pLat, pLon);
                         },
                       ),
               ),
@@ -262,10 +244,25 @@ class _AssignedStoresScreenState extends State<AssignedStoresScreen> {
     );
   }
 
-  Widget _buildStoreCard(String shopId, String shopName, Map<String, dynamic> shopData) {
+  Widget _buildStoreCard(String shopId, String shopName, Map<String, dynamic> shopData, double? pLat, double? pLon) {
     final phone = shopData['phone'] ?? shopData['mobileNumber'] ?? 'N/A';
     final address = shopData['shopAddress'] ?? shopData['address'] ?? shopData['location'] ?? 'N/A';
     final isShopActive = shopData['isStoreOpen'] == true;
+
+    final double? sLat = (shopData['latitude'] ?? shopData['lat']) is num
+        ? ((shopData['latitude'] ?? shopData['lat']) as num).toDouble()
+        : null;
+    final double? sLon = (shopData['longitude'] ?? shopData['lon'] ?? shopData['lng']) is num
+        ? ((shopData['longitude'] ?? shopData['lon'] ?? shopData['lng']) as num).toDouble()
+        : null;
+
+    String? distanceText;
+    if (pLat != null && pLon != null && sLat != null && sLon != null) {
+      final meters = Geolocator.distanceBetween(pLat, pLon, sLat, sLon);
+      distanceText = meters >= 1000
+          ? '${(meters / 1000).toStringAsFixed(1)} km'
+          : '${meters.toStringAsFixed(0)} m';
+    }
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -328,25 +325,48 @@ class _AssignedStoresScreenState extends State<AssignedStoresScreen> {
                             ),
                           ),
                           const SizedBox(height: 3),
-                          Row(
+                          Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 8,
                             children: [
-                              Container(
-                                width: 7,
-                                height: 7,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: isShopActive ? _successGreen : Colors.amber.shade700,
-                                ),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 7,
+                                    height: 7,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: isShopActive ? _successGreen : Colors.amber.shade700,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    isShopActive ? 'Active / Open' : 'Closed',
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: isShopActive ? _successGreen : Colors.amber.shade700,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(width: 5),
-                              Text(
-                                isShopActive ? 'Active / Open' : 'Closed',
-                                style: TextStyle(
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.w600,
-                                  color: isShopActive ? _successGreen : Colors.amber.shade700,
+                              if (distanceText != null)
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.near_me_outlined, size: 12, color: _textMuted),
+                                    const SizedBox(width: 3),
+                                    Text(
+                                      distanceText,
+                                      style: const TextStyle(
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: _textMuted,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ),
                             ],
                           ),
                         ],
@@ -397,7 +417,7 @@ class _AssignedStoresScreenState extends State<AssignedStoresScreen> {
                 // Action Buttons Row: Ready Orders Badge + Call & Directions + View Orders Button
                 Row(
                   children: [
-                    // Pending Orders Stream Badge
+                    // Ready Orders Stream Badge
                     StreamBuilder<QuerySnapshot>(
                       stream: FirebaseFirestore.instance
                           .collection('orders')
@@ -410,7 +430,7 @@ class _AssignedStoresScreenState extends State<AssignedStoresScreen> {
                             final data = doc.data() as Map<String, dynamic>;
                             final st = (data['status'] ?? '').toString().toLowerCase();
                             final boy = data['deliveryBoyId'];
-                            return (st == 'pending' || st == 'ready_for_pickup' || st == 'placed') &&
+                            return (st == 'ready_for_delivery' || st == 'ready_for_pickup') &&
                                 (boy == null || boy == '');
                           }).length;
                         }
@@ -454,7 +474,7 @@ class _AssignedStoresScreenState extends State<AssignedStoresScreen> {
                         visualDensity: VisualDensity.compact,
                         icon: const Icon(Icons.directions_outlined, color: _primaryCyan, size: 18),
                         tooltip: 'Directions',
-                        onPressed: () => _openDirections(address),
+                        onPressed: () => _openDirections(address, sLat, sLon),
                       ),
 
                     const SizedBox(width: 4),
@@ -528,29 +548,9 @@ class _AssignedStoresScreenState extends State<AssignedStoresScreen> {
             ),
             const SizedBox(height: 8),
             const Text(
-              'You have not been assigned to any stores yet by the admin. You can also select stores to request assignment.',
+              'You have not been assigned to any stores yet.\nStores are assigned to delivery partners by the OceanKart Admin.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 13, color: _textMuted, height: 1.4),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const SelectShopsScreen()),
-                ).then((_) => _fetchAllShopsDetails());
-              },
-              icon: const Icon(Icons.add_business_rounded, size: 18, color: Colors.white),
-              label: const Text(
-                'Request Store Assignment',
-                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _primaryCyan,
-                elevation: 0,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
             ),
           ],
         ),
