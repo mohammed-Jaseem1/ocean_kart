@@ -6,6 +6,7 @@ import 'profile_screen.dart';
 import 'shop_details_screen.dart';
 import 'assigned_stores_screen.dart';
 import '../common/notifications_screen.dart';
+import '../../services/network_service.dart';
 
 class DeliveryPartnerDashboard extends StatefulWidget {
   const DeliveryPartnerDashboard({super.key});
@@ -76,6 +77,7 @@ class _DeliveryPartnerDashboardState extends State<DeliveryPartnerDashboard> {
   }
 
   Future<void> _acceptDelivery(String orderId) async {
+    if (!await NetworkService.checkConnection(context)) return;
     if (currentUser == null) return;
     final orderRef = FirebaseFirestore.instance.collection('orders').doc(orderId);
     String? customerId;
@@ -179,6 +181,8 @@ class _DeliveryPartnerDashboardState extends State<DeliveryPartnerDashboard> {
   }
 
   Future<void> _markDelivered(String orderId, double total, {String? customerId, String? shopId}) async {
+    if (!await NetworkService.checkConnection(context)) return;
+    if (!mounted) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -320,6 +324,8 @@ class _DeliveryPartnerDashboardState extends State<DeliveryPartnerDashboard> {
   }
 
   Future<void> _reportDeliveryIssue(String orderId, {String? customerId, String? shopId}) async {
+    if (!await NetworkService.checkConnection(context)) return;
+    if (!mounted) return;
     String selectedReason = 'Customer unreachable / phone switched off';
     final notesController = TextEditingController();
 

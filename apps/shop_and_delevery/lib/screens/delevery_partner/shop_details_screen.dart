@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:geolocator/geolocator.dart';
+import '../../services/network_service.dart';
 
 class ShopDetailsScreen extends StatefulWidget {
   final String shopId;
@@ -157,6 +158,7 @@ class _ShopDetailsScreenState extends State<ShopDetailsScreen> with SingleTicker
   }
 
   Future<void> _acceptDelivery(String orderId) async {
+    if (!await NetworkService.checkConnection(context)) return;
     if (currentUser == null) return;
 
     if (!_isShopAssigned) {
@@ -272,6 +274,8 @@ class _ShopDetailsScreenState extends State<ShopDetailsScreen> with SingleTicker
   }
 
   Future<void> _markDelivered(String orderId, double total, {String? customerId, String? shopId}) async {
+    if (!await NetworkService.checkConnection(context)) return;
+    if (!mounted) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -414,6 +418,8 @@ class _ShopDetailsScreenState extends State<ShopDetailsScreen> with SingleTicker
   }
 
   Future<void> _reportDeliveryIssue(String orderId, {String? customerId, String? shopId}) async {
+    if (!await NetworkService.checkConnection(context)) return;
+    if (!mounted) return;
     String selectedReason = 'Customer unreachable / phone switched off';
     final notesController = TextEditingController();
 
