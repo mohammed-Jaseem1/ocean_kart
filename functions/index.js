@@ -380,3 +380,141 @@ exports.createAdminUser = onCall(async (request) => {
     throw new HttpsError("internal", error.message);
   }
 });
+
+/**
+ * Reset User Password with Mobile & OTP Verification
+ * Data payload: { mobileNumber: '9876543210', otp: '1234', reqId: '...', newPassword: '...' }
+ */
+exports.resetPasswordWithMobile = onCall(async (request) => {
+  const { mobileNumber, otp, reqId, newPassword } = request.data || {};
+
+  if (!mobileNumber) {
+    throw new HttpsError("invalid-argument", "Mobile number is required.");
+  }
+  if (!newPassword || newPassword.length < 6) {
+    throw new HttpsError("invalid-argument", "Password must be at least 6 characters.");
+  }
+
+  // 1. Clean mobile number
+  let cleanMobile = String(mobileNumber).replace(/[+\s-]/g, "").trim();
+  let raw10 = cleanMobile;
+  if (cleanMobile.startsWith("91") && cleanMobile.length === 12) {
+    raw10 = cleanMobile.substring(2);
+  } else if (cleanMobile.length === 10) {
+    cleanMobile = `91${cleanMobile}`;
+  }
+
+  // 2. Verify OTP with MSG91 if otp is provided
+  if (otp) {
+    try {
+      const verifyRes = await axios.get(`${MSG91_BASE}/otp/verify`, {
+        params: {
+          authkey: MSG91_AUTH_KEY,
+          otp: String(otp).trim(),
+          mobile: cleanMobile,
+          ...(reqId ? { reqId } : {}),
+        },
+      });
+
+      const resData = verifyRes.data || {};
+      console.log("resetPasswordWithMobile MSG91 response:", JSON.stringify(resData));
+      if (resData.type === "error") {
+        throw new HttpsError("unauthenticated", resData.message || "Invalid OTP code.");
+      }
+    } catch (error) {
+      console.error("resetPasswordWithMobile OTP error:", error);
+      if (error instanceof HttpsError) throw error;
+      const errMsg = error.response?.data?.message || error.message || "OTP verification failed.";
+      throw new HttpsError("unauthenticated", String(errMsg));
+    }
+  }
+
+  // 3. Find user in Firestore users collection
+  let targetUid = null;
+  let targetEmail = null;
+
+  const usersSnap = await admin.firestore().collection("users")
+    .where("mobileNumber", "in", [raw10, cleanMobile, `+${cleanMobile}`])
+    .limit(1)
+    .get();
+
+  if (!usersSnap.empty) {
+    const doc = usersSnap.docs[0];
+    targetUid = doc.id;
+    targetEmail = doc.data().email;
+  } else {
+    // Try finding in Auth directly by phoneNumber
+    try {
+      const authUser = await admin.auth().getUserByPhoneNumber(`+${cleanMobile}`);
+      targetUid = authUser.uid;
+      targetEmail = authUser.email;
+    } catch (_) {}
+  }
+
+  if (!targetUid) {
+    throw new HttpsError("not-found", "No account found matching this mobile number.");
+  }
+
+  // 4. Update the password via Admin Auth
+  try {
+    await admin.auth().updateUser(targetUid, { password: newPassword });
+    console.log(`resetPasswordWithMobile: successfully updated password for uid ${targetUid}`);
+    return {
+      success: true,
+      email: targetEmail,
+      message: "Password reset successfully. You can now log in with your new password.",
+    };
+  } catch (err) {
+    console.error("resetPasswordWithMobile updateUser error:", err);
+    throw new HttpsError("internal", err.message || "Failed to update password.");
+  }
+});
+
+/**
+ * Check if a customer account exists with the given mobile number.
+ * Can be called anonymously by users resetting their password.
+ */
+exports.checkMobileRegistered = onCall(async (request) => {
+  const { mobileNumber } = request.data || {};
+  if (!mobileNumber) {
+    throw new HttpsError("invalid-argument", "Mobile number is required.");
+  }
+
+  let cleanMobile = String(mobileNumber).replace(/[+\s-]/g, "").trim();
+  let raw10 = cleanMobile;
+  if (cleanMobile.startsWith("91") && cleanMobile.length === 12) {
+    raw10 = cleanMobile.substring(2);
+  } else if (cleanMobile.length === 10) {
+    cleanMobile = `91${cleanMobile}`;
+  }
+
+  const variations = [raw10, cleanMobile, `+${cleanMobile}`, `+91 ${raw10}`];
+  
+  try {
+    const query = await admin.firestore().collection("users")
+      .where("mobileNumber", "in", variations)
+      .limit(1)
+      .get();
+
+    if (!query.empty) {
+      const doc = query.docs[0];
+      return {
+        exists: true,
+        email: doc.data().email || "",
+      };
+    }
+
+    // Also check Firebase Auth by phone number
+    try {
+      const authUser = await admin.auth().getUserByPhoneNumber(`+${cleanMobile}`);
+      return { exists: true, email: authUser.email || "" };
+    } catch (_) {
+      return { exists: false };
+    }
+  } catch (error) {
+    console.error("checkMobileRegistered error:", error);
+    throw new HttpsError("internal", error.message || "Error checking mobile number.");
+  }
+});
+
+
