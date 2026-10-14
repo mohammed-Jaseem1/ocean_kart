@@ -20,16 +20,16 @@ class CheckoutScreen extends StatefulWidget {
 }
 
 class _CheckoutScreenState extends State<CheckoutScreen> {
-  final _phoneController = TextEditingController();
+  String _userPhone = '';
   bool _isLoading = false;
   bool _isLoadingItems = true;
 
   List<Map<String, dynamic>> _itemsToOrder = [];
   double _calculatedTotal = 0.0;
+  String _shopName = '';
 
-  // Address management
-  List<Map<String, dynamic>> _savedAddresses = [];
-  Map<String, dynamic>? _selectedAddress; // {label, address, lat, lon, id}
+  // Single Delivery Address management
+  Map<String, dynamic>? _selectedAddress; // {address, lat, lon, id}
   bool _isLoadingAddresses = true;
 
   @override
@@ -37,6 +37,36 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     super.initState();
     _calculatedTotal = widget.totalAmount;
     _initializeCheckout();
+  }
+
+  String _cleanDisplayAddress(String? address) {
+    if (address == null || address.trim().isEmpty) return '';
+    return address
+        .replaceFirst(RegExp(r'^[A-Z0-9]{2,8}\+[A-Z0-9]{2,4}[\s,]+'), '')
+        .trim();
+  }
+
+  Future<void> _fetchShopName(String shopId) async {
+    if (shopId.isEmpty) return;
+    try {
+      var shopDoc = await FirebaseFirestore.instance
+          .collection('shop_owners')
+          .doc(shopId)
+          .get();
+      if (!shopDoc.exists) {
+        shopDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(shopId)
+            .get();
+      }
+      if (shopDoc.exists && mounted) {
+        final data = shopDoc.data();
+        setState(() {
+          _shopName =
+              data?['shopName'] ?? data?['name'] ?? 'Local Fish Shop';
+        });
+      }
+    } catch (_) {}
   }
 
   Future<void> _initializeCheckout() async {
@@ -52,14 +82,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (userDoc.exists) {
         final data = userDoc.data() as Map<String, dynamic>;
         if (data['phone'] != null) {
-          _phoneController.text = data['phone'];
+          _userPhone = data['phone'].toString();
         }
       }
 
-      // Fetch saved addresses from subcollection
+      // Fetch saved address
       await _loadSavedAddresses();
 
-      // Fetch items
+      // Fetch items (selected from cart or direct)
       List<Map<String, dynamic>> items = [];
       if (widget.directItems != null && widget.directItems!.isNotEmpty) {
         items = List.from(widget.directItems!);
@@ -82,20 +112,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         }).toList();
       }
 
-      // Add default preparation option to each item
-      for (var item in items) {
-        if (!item.containsKey('preparation')) {
-          item['preparation'] = <String>[];
-        } else if (item['preparation'] is String) {
-          item['preparation'] = <String>[item['preparation']];
-        }
-      }
 
       setState(() {
         _itemsToOrder = items;
         _isLoadingItems = false;
       });
       _recalculateTotal();
+
+      if (items.isNotEmpty) {
+        final firstShopId = items.first['shopId']?.toString() ?? '';
+        _fetchShopName(firstShopId);
+      }
     } catch (e) {
       debugPrint('Error init checkout: $e');
       setState(() => _isLoadingItems = false);
@@ -107,24 +134,76 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     if (user == null) return;
 
     try {
+      // 1. Check primary address subcollection
+      final primaryDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('addresses')
+          .doc('primary')
+          .get();
+
+      if (primaryDoc.exists && primaryDoc.data() != null) {
+        final pData = primaryDoc.data()!;
+        final addr = {
+          'id': 'primary',
+          'address': _cleanDisplayAddress(pData['address']?.toString()),
+          'lat': (pData['lat'] as num?)?.toDouble(),
+          'lon': (pData['lon'] as num?)?.toDouble(),
+        };
+        setState(() {
+          _selectedAddress = addr;
+          _isLoadingAddresses = false;
+        });
+        return;
+      }
+
+      // 2. Check user profile for address and coordinates
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+      final uData = userDoc.data();
+      if (uData != null && uData['address'] != null && uData['lat'] != null) {
+        final addr = {
+          'id': 'primary',
+          'address': _cleanDisplayAddress(uData['address']?.toString()),
+          'lat': (uData['lat'] as num?)?.toDouble(),
+          'lon': (uData['lon'] as num?)?.toDouble(),
+        };
+        setState(() {
+          _selectedAddress = addr;
+          _isLoadingAddresses = false;
+        });
+        return;
+      }
+
+      // 3. Fallback: load any existing address
       final snapshot = await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
           .collection('addresses')
-          .orderBy('createdAt', descending: false)
+          .limit(1)
           .get();
 
-      final addresses = snapshot.docs.map((doc) {
-        return {'id': doc.id, ...doc.data()};
-      }).toList();
+      if (snapshot.docs.isNotEmpty) {
+        final doc = snapshot.docs.first;
+        final docData = doc.data();
+        final addr = {
+          'id': doc.id,
+          'address': _cleanDisplayAddress(docData['address']?.toString()),
+          'lat': (docData['lat'] as num?)?.toDouble(),
+          'lon': (docData['lon'] as num?)?.toDouble(),
+        };
+        setState(() {
+          _selectedAddress = addr;
+          _isLoadingAddresses = false;
+        });
+        return;
+      }
 
       setState(() {
-        _savedAddresses = addresses;
+        _selectedAddress = null;
         _isLoadingAddresses = false;
-        // Auto-select first address if available
-        if (addresses.isNotEmpty && _selectedAddress == null) {
-          _selectedAddress = addresses.first;
-        }
       });
     } catch (e) {
       debugPrint('Error loading addresses: $e');
@@ -155,19 +234,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     });
   }
 
-  void _updatePreparation(int index, String option, bool isSelected) {
-    setState(() {
-      final List<String> current = List<String>.from(
-        _itemsToOrder[index]['preparation'] ?? [],
-      );
-      if (isSelected) {
-        if (!current.contains(option)) current.add(option);
-      } else {
-        current.remove(option);
-      }
-      _itemsToOrder[index]['preparation'] = current;
-    });
-  }
 
   Future<void> _removeItem(int index) async {
     final item = _itemsToOrder[index];
@@ -177,19 +243,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       _recalculateTotal();
     });
 
-    if (widget.directItems == null || widget.directItems!.isEmpty) {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user != null && item['productId'] != null) {
-        try {
-          await FirebaseFirestore.instance
-              .collection('users')
-              .doc(user.uid)
-              .collection('cart')
-              .doc(item['productId'])
-              .delete();
-        } catch (e) {
-          debugPrint('Error removing from cart: $e');
-        }
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null && item['productId'] != null) {
+      try {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('cart')
+            .doc(item['productId'])
+            .delete();
+      } catch (e) {
+        debugPrint('Error removing from cart: $e');
       }
     }
 
@@ -213,7 +277,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     if (result != null && mounted) {
       final double? lat = result['lat'] as double?;
       final double? lon = result['lon'] as double?;
-      final String address = result['address'] as String? ?? '';
+      final String rawAddress = result['address'] as String? ?? '';
+      final String cleanAddress = _cleanDisplayAddress(rawAddress);
 
       if (lat == null || lon == null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -226,44 +291,44 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         return;
       }
 
-      // Show label picker dialog
-      final label = await _showLabelPickerDialog();
-      if (label == null || !mounted) return;
-
-      // Save to Firestore
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
 
       try {
-        final docRef = await FirebaseFirestore.instance
+        await FirebaseFirestore.instance
             .collection('users')
             .doc(user.uid)
             .collection('addresses')
-            .add({
-          'label': label,
-          'address': address,
+            .doc('primary')
+            .set({
+          'address': cleanAddress,
           'lat': lat,
           'lon': lon,
-          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
         });
 
+        // Also merge into user profile
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'address': cleanAddress,
+          'lat': lat,
+          'lon': lon,
+        }, SetOptions(merge: true));
+
         final newAddress = {
-          'id': docRef.id,
-          'label': label,
-          'address': address,
+          'id': 'primary',
+          'address': cleanAddress,
           'lat': lat,
           'lon': lon,
         };
 
         setState(() {
-          _savedAddresses.add(newAddress);
           _selectedAddress = newAddress;
         });
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('$label address saved!'),
+            const SnackBar(
+              content: Text('Delivery location updated!'),
               backgroundColor: Colors.green,
             ),
           );
@@ -278,176 +343,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
-  Future<String?> _showLabelPickerDialog() async {
-    String selectedLabel = 'Home';
-    final customController = TextEditingController();
-
-    return showDialog<String>(
-      context: context,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setDialogState) {
-            return AlertDialog(
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20)),
-              title: const Text(
-                'Save Address As',
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
-              ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: ['Home', 'Work', 'Other'].map((label) {
-                      final isSelected = selectedLabel == label;
-                      return GestureDetector(
-                        onTap: () =>
-                            setDialogState(() => selectedLabel = label),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? const Color(0xFF00B4D8)
-                                : const Color(0xFFF1F5F9),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                label == 'Home'
-                                    ? Icons.home_outlined
-                                    : label == 'Work'
-                                        ? Icons.work_outline
-                                        : Icons.location_on_outlined,
-                                color: isSelected
-                                    ? Colors.white
-                                    : const Color(0xFF64748B),
-                                size: 18,
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                label,
-                                style: TextStyle(
-                                  color: isSelected
-                                      ? Colors.white
-                                      : const Color(0xFF0F172A),
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                  if (selectedLabel == 'Other') ...[
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: customController,
-                      decoration: InputDecoration(
-                        hintText: 'Enter a custom label...',
-                        hintStyle:
-                            TextStyle(color: Colors.grey.shade400, fontSize: 14),
-                        filled: true,
-                        fillColor: const Color(0xFFF8FAFC),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 12),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('Cancel',
-                      style: TextStyle(color: Color(0xFF64748B))),
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF00B4D8),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
-                  ),
-                  onPressed: () {
-                    final finalLabel = selectedLabel == 'Other' &&
-                            customController.text.trim().isNotEmpty
-                        ? customController.text.trim()
-                        : selectedLabel;
-                    Navigator.pop(ctx, finalLabel);
-                  },
-                  child: const Text('Save',
-                      style: TextStyle(fontWeight: FontWeight.bold)),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Future<void> _deleteAddress(String addressId) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Delete Address',
-            style: TextStyle(fontWeight: FontWeight.bold)),
-        content: const Text('Remove this saved address?'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete',
-                style: TextStyle(color: Colors.redAccent)),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('addresses')
-          .doc(addressId)
-          .delete();
-
-      setState(() {
-        _savedAddresses.removeWhere((a) => a['id'] == addressId);
-        if (_selectedAddress?['id'] == addressId) {
-          _selectedAddress =
-              _savedAddresses.isNotEmpty ? _savedAddresses.first : null;
-        }
-      });
-    }
-  }
-
-  /// Returns true if delivery is allowed, false if blocked.
   Future<bool> _validateDeliveryRadius() async {
     if (_selectedAddress == null) return false;
 
     final double? deliveryLat = _selectedAddress!['lat'] as double?;
     final double? deliveryLon = _selectedAddress!['lon'] as double?;
 
-    // Require GPS coordinates on the address
     if (deliveryLat == null || deliveryLon == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -461,13 +362,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       return false;
     }
 
-    // Get the shopId from items
     final String? shopId = _itemsToOrder.isNotEmpty
         ? _itemsToOrder.first['shopId'] as String?
         : null;
 
     if (shopId == null || shopId.isEmpty) {
-      // No shopId to validate against — allow order
       return true;
     }
 
@@ -491,7 +390,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       final double deliveryRadiusKm =
           (shopData['deliveryRadiusKm'] as num?)?.toDouble() ?? 10.0;
 
-      // If shop has no GPS pin, skip radius check
       if (shopLat == null || shopLon == null) return true;
 
       final double distanceMeters = Geolocator.distanceBetween(
@@ -523,9 +421,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 'Please select a closer address or contact the shop.',
                 textAlign: TextAlign.center,
                 style: const TextStyle(
-                    fontSize: 14,
-                    color: Color(0xFF475569),
-                    height: 1.5),
+                    fontSize: 14, color: Color(0xFF475569), height: 1.5),
               ),
               actions: [
                 SizedBox(
@@ -550,7 +446,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       }
     } catch (e) {
       debugPrint('Error validating delivery radius: $e');
-      // On error, allow order to proceed
     }
 
     return true;
@@ -565,59 +460,48 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       return;
     }
 
-    if (_phoneController.text.trim().isEmpty) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter your phone number')),
+        const SnackBar(content: Text('You must be logged in to order')),
       );
-      return;
-    }
-
-    if (_itemsToOrder.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('No items to order')));
       return;
     }
 
     setState(() => _isLoading = true);
 
-    // Validate delivery radius before anything else
-    final bool canDeliver = await _validateDeliveryRadius();
-    if (!canDeliver) {
-      setState(() => _isLoading = false);
-      return;
-    }
-
     try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) return;
+      final isDeliverable = await _validateDeliveryRadius();
+      if (!isDeliverable) {
+        setState(() => _isLoading = false);
+        return;
+      }
 
-      // Save phone for future
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-        'phone': _phoneController.text.trim(),
-      }, SetOptions(merge: true));
-
-      // 1. Validate stock for all items
+      // Check stock for each item
       for (var item in _itemsToOrder) {
         final String? shopId = item['shopId'];
         final String? productId = item['productId'];
-        final double qty = (item['quantity'] as num?)?.toDouble() ?? 1.0;
         final String name = item['name'] ?? 'Product';
+        final double qty = (item['quantity'] as num?)?.toDouble() ?? 1.0;
 
-        if (shopId != null && productId != null) {
-          var productDoc = await FirebaseFirestore.instance
+        if (shopId != null &&
+            productId != null &&
+            shopId.isNotEmpty &&
+            productId.isNotEmpty) {
+          var productRef = FirebaseFirestore.instance
               .collection('shop_owners')
               .doc(shopId)
               .collection('products')
-              .doc(productId)
-              .get();
+              .doc(productId);
 
+          var productDoc = await productRef.get();
           if (!productDoc.exists) {
-            productDoc = await FirebaseFirestore.instance
+            productRef = FirebaseFirestore.instance
                 .collection('users')
                 .doc(shopId)
                 .collection('products')
-                .doc(productId)
-                .get();
+                .doc(productId);
+            productDoc = await productRef.get();
           }
 
           if (!productDoc.exists) {
@@ -654,58 +538,66 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         }
       }
 
-      // 2. Fetch user profile data
+      // Fetch user profile
       final userDoc = await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
           .get();
       final userData = userDoc.data() ?? {};
       final String customerName =
-          userData['name'] ?? user.displayName ?? 'Unknown Customer';
+          userData['name'] ?? user.displayName ?? 'Customer';
       final String customerEmail = userData['email'] ?? user.email ?? '';
 
-      // 3. Create Order
-      final orderRef = await FirebaseFirestore.instance.collection('orders').add({
+      final String shopId = _itemsToOrder.isNotEmpty
+          ? (_itemsToOrder.first['shopId'] ?? '')
+          : '';
+
+      // Create Order document (Cash on Delivery)
+      final orderRef =
+          await FirebaseFirestore.instance.collection('orders').add({
         'userId': user.uid,
         'customerName': customerName,
         'customerEmail': customerEmail,
-        'shopId': _itemsToOrder.isNotEmpty ? _itemsToOrder.first['shopId'] : '',
+        'shopId': shopId,
+        'shopName': _shopName,
         'items': _itemsToOrder,
         'totalAmount': _calculatedTotal,
         'deliveryAddress': _selectedAddress!['address'],
         'deliveryLat': _selectedAddress!['lat'],
         'deliveryLon': _selectedAddress!['lon'],
-        'deliveryAddressLabel': _selectedAddress!['label'] ?? '',
-        'phone': _phoneController.text.trim(),
+        'phone': _userPhone,
         'paymentMethod': 'COD',
         'status': 'pending',
         'createdAt': FieldValue.serverTimestamp(),
       });
 
       final String orderId = orderRef.id;
-      final String shopId = _itemsToOrder.isNotEmpty ? (_itemsToOrder.first['shopId'] ?? '') : '';
-      final String shortOrderId = orderId.length > 8 ? orderId.substring(0, 8).toUpperCase() : orderId.toUpperCase();
+      final String shortOrderId = orderId.length > 8
+          ? orderId.substring(0, 8).toUpperCase()
+          : orderId.toUpperCase();
 
-      // Update shop owner aggregated stats to reduce reads
+      // Update shop stats
       if (shopId.isNotEmpty) {
         try {
-          await FirebaseFirestore.instance.collection('shop_owners').doc(shopId).set({
+          await FirebaseFirestore.instance
+              .collection('shop_owners')
+              .doc(shopId)
+              .set({
             'totalOrders': FieldValue.increment(1),
             'pendingOrders': FieldValue.increment(1),
           }, SetOptions(merge: true));
-        } catch (e) {
-          debugPrint('Error incrementing shop owner order stats: $e');
-        }
+        } catch (_) {}
       }
 
-      // Trigger Notification for Shop Owner
+      // Notification for Shop Owner
       if (shopId.isNotEmpty) {
         try {
           var shopDoc = await FirebaseFirestore.instance
               .collection('shop_owners')
               .doc(shopId)
               .get();
-          final String shopCollection = shopDoc.exists ? 'shop_owners' : 'users';
+          final String shopCollection =
+              shopDoc.exists ? 'shop_owners' : 'users';
 
           await FirebaseFirestore.instance
               .collection(shopCollection)
@@ -713,19 +605,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               .collection('notifications')
               .add({
             'title': 'New Order Received! 🛒',
-            'body': 'Order #$shortOrderId placed by $customerName for ₹${_calculatedTotal.toStringAsFixed(0)}.',
+            'body':
+                'Order #$shortOrderId placed by $customerName for ₹${_calculatedTotal.toStringAsFixed(0)} (COD).',
             'type': 'order',
             'orderId': orderId,
             'isRead': false,
             'read': false,
             'createdAt': FieldValue.serverTimestamp(),
           });
-        } catch (e) {
-          debugPrint('Error triggering shop owner notification: $e');
-        }
+        } catch (_) {}
       }
 
-      // Trigger Notification for Customer
+      // Notification for Customer
       try {
         await FirebaseFirestore.instance
             .collection('users')
@@ -733,80 +624,127 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             .collection('notifications')
             .add({
           'title': 'Order Placed Successfully! 🎉',
-          'body': 'Your order #$shortOrderId for ₹${_calculatedTotal.toStringAsFixed(0)} has been placed.',
+          'body':
+              'Your order #$shortOrderId for ₹${_calculatedTotal.toStringAsFixed(0)} (Cash on Delivery) has been placed.',
           'type': 'order',
           'orderId': orderId,
           'isRead': false,
           'read': false,
           'createdAt': FieldValue.serverTimestamp(),
         });
-      } catch (e) {
-        debugPrint('Error triggering customer notification: $e');
-      }
+      } catch (_) {}
 
-      // 4. Reduce inventory stock
+      // Update inventory stock
       for (var item in _itemsToOrder) {
-        final String? shopId = item['shopId'];
-        final String? productId = item['productId'];
+        final String? sId = item['shopId'];
+        final String? pId = item['productId'];
         final double qty = (item['quantity'] as num?)?.toDouble() ?? 1.0;
 
-        if (shopId != null &&
-            productId != null &&
-            shopId.isNotEmpty &&
-            productId.isNotEmpty) {
+        if (sId != null && pId != null && sId.isNotEmpty && pId.isNotEmpty) {
           var productRef = FirebaseFirestore.instance
               .collection('shop_owners')
-              .doc(shopId)
+              .doc(sId)
               .collection('products')
-              .doc(productId);
+              .doc(pId);
 
           final productDoc = await productRef.get();
           if (!productDoc.exists) {
             productRef = FirebaseFirestore.instance
                 .collection('users')
-                .doc(shopId)
+                .doc(sId)
                 .collection('products')
-                .doc(productId);
+                .doc(pId);
           }
 
           try {
-            await FirebaseFirestore.instance
-                .runTransaction((transaction) async {
-              final snapshot = await transaction.get(productRef);
-              if (snapshot.exists) {
-                final currentStock =
-                    (snapshot.data()?['stockQuantity'] as num?)?.toDouble() ??
+            await FirebaseFirestore.instance.runTransaction((tx) async {
+              final snap = await tx.get(productRef);
+              if (snap.exists) {
+                final current =
+                    (snap.data()?['stockQuantity'] as num?)?.toDouble() ??
                         0.0;
-                final newStock = currentStock - qty;
-                transaction.update(productRef, {
+                final newStock = current - qty;
+                tx.update(productRef, {
                   'stockQuantity': newStock < 0 ? 0.0 : newStock,
                   'status': newStock <= 0 ? 'out_of_stock' : 'active',
                 });
               }
             });
-          } catch (e) {
-            debugPrint('Failed to update stock for $productId: $e');
-          }
+          } catch (_) {}
         }
       }
 
-      // 5. Clear Cart if not direct buy
-      if (widget.directItems == null || widget.directItems!.isEmpty) {
-        final cartSnapshot = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .collection('cart')
-            .get();
-        for (var doc in cartSnapshot.docs) {
-          await doc.reference.delete();
+      // Remove ordered items from Cart
+      for (var item in _itemsToOrder) {
+        final String? pId = item['productId'];
+        if (pId != null && pId.isNotEmpty) {
+          try {
+            await FirebaseFirestore.instance
+                .collection('users')
+                .doc(user.uid)
+                .collection('cart')
+                .doc(pId)
+                .delete();
+          } catch (_) {}
         }
       }
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Order placed successfully!')),
+        await showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => AlertDialog(
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 10),
+                const Icon(Icons.check_circle_rounded,
+                    color: Colors.green, size: 64),
+                const SizedBox(height: 16),
+                const Text(
+                  'Order Placed Successfully!',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Order #$shortOrderId\nTotal: ₹${_calculatedTotal.toStringAsFixed(2)}\n\n'
+                  'Payment method: Cash on Delivery\n'
+                  'Please keep exact cash ready upon delivery.',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      fontSize: 14, color: Color(0xFF475569), height: 1.4),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF00B4D8),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      Navigator.of(context)
+                          .popUntil((route) => route.isFirst);
+                    },
+                    child: const Text('Back to Home',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
+            ),
+          ),
         );
-        Navigator.of(context).popUntil((route) => route.isFirst);
       }
     } catch (e) {
       if (mounted) {
@@ -822,7 +760,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   @override
   void dispose() {
-    _phoneController.dispose();
     super.dispose();
   }
 
@@ -834,11 +771,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         backgroundColor: Colors.white,
         elevation: 0.5,
         title: const Text(
-          'Secure Checkout',
+          'Order Summary',
           style: TextStyle(
             color: Color(0xFF0F172A),
             fontWeight: FontWeight.w800,
-            fontSize: 20,
+            fontSize: 19,
           ),
         ),
         iconTheme: const IconThemeData(color: Color(0xFF0F172A)),
@@ -848,74 +785,105 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // ── Order Summary Card ──────────────────────────────
+                  // ── Shop Info & COD Header Banner ─────────────────────────
                   Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.all(24),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF00B4D8), Color(0xFF0077B6)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(20),
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
                       boxShadow: [
                         BoxShadow(
-                          color:
-                              const Color(0xFF00B4D8).withValues(alpha: 0.3),
-                          blurRadius: 15,
-                          offset: const Offset(0, 8),
+                          color: Colors.black.withValues(alpha: 0.03),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3),
                         ),
                       ],
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Row(
                       children: [
-                        Text(
-                          'Total Amount To Pay',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.8),
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF00B4D8)
+                                .withValues(alpha: 0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.storefront_rounded,
+                              color: Color(0xFF00B4D8), size: 22),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Ordering from',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  color: Color(0xFF64748B),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                _shopName.isNotEmpty
+                                    ? _shopName
+                                    : 'Local Fish Shop',
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF0F172A),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          '₹${_calculatedTotal.toStringAsFixed(2)}',
-                          style: const TextStyle(
-                            fontSize: 36,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.white,
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.green.shade50,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.green.shade200),
                           ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8.0),
-                          child: Text(
-                            '${_itemsToOrder.length} item(s) selected',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.6),
-                              fontSize: 12,
-                            ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.payments_outlined,
+                                  size: 14, color: Colors.green.shade800),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Pay on Delivery',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.green.shade800,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 32),
 
-                  // ── Items & Preferences ────────────────────────────
+                  const SizedBox(height: 22),
+
+                  // ── Items & Preferences Header ────────────────────────────
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text(
                         'Items & Preferences',
                         style: TextStyle(
-                          fontSize: 18,
+                          fontSize: 17,
                           fontWeight: FontWeight.w800,
                           color: Color(0xFF0F172A),
                         ),
@@ -924,31 +892,31 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         onPressed: () => Navigator.of(context)
                             .popUntil((route) => route.isFirst),
                         icon: const Icon(Icons.add,
-                            color: Color(0xFF00B4D8)),
+                            size: 18, color: Color(0xFF00B4D8)),
                         label: const Text(
                           'Add More',
                           style: TextStyle(
                             color: Color(0xFF00B4D8),
                             fontWeight: FontWeight.bold,
+                            fontSize: 13,
                           ),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 10),
 
-                  // Items List
+                  // ── Items List ────────────────────────────────────────────
                   ListView.builder(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
                     itemCount: _itemsToOrder.length,
                     itemBuilder: (context, index) {
                       final item = _itemsToOrder[index];
-                      final qty =
-                          (item['quantity'] as num).toDouble();
-                      final price =
-                          (item['pricePerKg'] as num).toDouble();
+                      final qty = (item['quantity'] as num).toDouble();
+                      final price = (item['pricePerKg'] as num).toDouble();
                       final imageUrl = item['imageUrl'];
+                      final itemSubtotal = price * qty;
 
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 12),
@@ -956,39 +924,39 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           children: [
                             Container(
                               width: double.infinity,
-                              padding: const EdgeInsets.all(12),
+                              padding: const EdgeInsets.all(14),
                               decoration: BoxDecoration(
                                 color: Colors.white,
                                 borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                    color: const Color(0xFFE2E8F0)),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.black
-                                        .withValues(alpha: 0.03),
-                                    blurRadius: 10,
-                                    offset: const Offset(0, 4),
+                                    color: Colors.black.withValues(alpha: 0.03),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 3),
                                   ),
                                 ],
                               ),
                               child: Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Row(
                                     children: [
+                                      // Product Image
                                       Container(
-                                        width: 50,
-                                        height: 50,
+                                        width: 58,
+                                        height: 58,
                                         decoration: BoxDecoration(
                                           color: Colors.grey.shade100,
                                           borderRadius:
-                                              BorderRadius.circular(8),
+                                              BorderRadius.circular(10),
                                           image: imageUrl != null &&
                                                   imageUrl.isNotEmpty
                                               ? DecorationImage(
                                                   image: imageUrl
                                                           .startsWith('http')
-                                                      ? NetworkImage(
-                                                              imageUrl)
+                                                      ? NetworkImage(imageUrl)
                                                           as ImageProvider
                                                       : MemoryImage(
                                                           base64Decode(
@@ -1004,30 +972,43 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                             : null,
                                       ),
                                       const SizedBox(width: 12),
+
+                                      // Product Details & Price Calculation
                                       Expanded(
                                         child: Column(
                                           crossAxisAlignment:
                                               CrossAxisAlignment.start,
                                           children: [
                                             Text(
-                                              item['name'],
+                                              item['name'] ?? 'Product',
                                               style: const TextStyle(
-                                                fontWeight:
-                                                    FontWeight.bold,
+                                                fontWeight: FontWeight.bold,
                                                 fontSize: 15,
+                                                color: Color(0xFF0F172A),
                                               ),
                                             ),
+                                            const SizedBox(height: 3),
                                             Text(
-                                              '₹${price.toStringAsFixed(0)}/kg',
+                                              '₹${price.toStringAsFixed(0)}/kg × ${qty.toStringAsFixed(1)} kg',
+                                              style: TextStyle(
+                                                color: Colors.grey.shade600,
+                                                fontSize: 12.5,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              'Item Total: ₹${itemSubtotal.toStringAsFixed(2)}',
                                               style: const TextStyle(
-                                                color: Colors.blueAccent,
-                                                fontSize: 13,
-                                                fontWeight: FontWeight.w600,
+                                                color: Color(0xFF00B4D8),
+                                                fontSize: 13.5,
+                                                fontWeight: FontWeight.w800,
                                               ),
                                             ),
                                           ],
                                         ),
                                       ),
+
                                       // Quantity Selector
                                       Row(
                                         children: [
@@ -1038,22 +1019,23 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                               size: 20,
                                             ),
                                             onPressed: () =>
-                                                _updateQuantity(
-                                                    index, -0.5),
+                                                _updateQuantity(index, -0.5),
                                             padding: EdgeInsets.zero,
                                             constraints:
                                                 const BoxConstraints(),
                                           ),
-                                          const SizedBox(width: 8),
-                                          Text(
-                                            '${qty.toStringAsFixed(1)} kg',
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 14,
-                                              color: Colors.black87,
+                                          Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 6),
+                                            child: Text(
+                                              '${qty.toStringAsFixed(1)} kg',
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 13.5,
+                                                color: Colors.black87,
+                                              ),
                                             ),
                                           ),
-                                          const SizedBox(width: 8),
                                           IconButton(
                                             icon: const Icon(
                                               Icons.add_circle_outline,
@@ -1061,8 +1043,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                               size: 20,
                                             ),
                                             onPressed: () =>
-                                                _updateQuantity(
-                                                    index, 0.5),
+                                                _updateQuantity(index, 0.5),
                                             padding: EdgeInsets.zero,
                                             constraints:
                                                 const BoxConstraints(),
@@ -1071,71 +1052,21 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                       ),
                                     ],
                                   ),
-                                  const Divider(height: 24),
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            const Text(
-                                              'Preparation Options (Select multiple):',
-                                              style: TextStyle(
-                                                fontSize: 13,
-                                                color: Colors.black54,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 8),
-                                            Wrap(
-                                              spacing: 8,
-                                              runSpacing: 8,
-                                              children: [
-                                                'Cleaning',
-                                                'Cut for Curry',
-                                                'Cut for Fry',
-                                              ].map((option) {
-                                                final isSelected = ((item[
-                                                                'preparation'] ??
-                                                            []) as List)
-                                                    .contains(option);
-                                                return FilterChip(
-                                                  label: Text(option,
-                                                      style:
-                                                          const TextStyle(
-                                                              fontSize:
-                                                                  12)),
-                                                  selected: isSelected,
-                                                  onSelected: (selected) =>
-                                                      _updatePreparation(
-                                                          index,
-                                                          option,
-                                                          selected),
-                                                  selectedColor: const Color(
-                                                          0xFF00B4D8)
-                                                      .withValues(
-                                                          alpha: 0.2),
-                                                  checkmarkColor:
-                                                      const Color(
-                                                          0xFF00B4D8),
-                                                );
-                                              }).toList(),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+
                                 ],
                               ),
                             ),
+
+                            // Delete button
                             Positioned(
-                              top: 0,
-                              right: 0,
+                              top: 6,
+                              right: 6,
                               child: IconButton(
-                                icon: const Icon(Icons.cancel,
-                                    color: Colors.grey, size: 24),
+                                icon: const Icon(Icons.close_rounded,
+                                    color: Colors.grey, size: 20),
                                 onPressed: () => _removeItem(index),
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
                               ),
                             ),
                           ],
@@ -1144,25 +1075,25 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     },
                   ),
 
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 20),
 
-                  // ── Delivery Address Section ───────────────────────
+                  // ── Delivery Address Section ──────────────────────────────
                   const Row(
                     children: [
                       Icon(Icons.location_on,
-                          color: Color(0xFF0F172A), size: 22),
+                          color: Color(0xFF0F172A), size: 20),
                       SizedBox(width: 8),
                       Text(
                         'Delivery Address',
                         style: TextStyle(
-                          fontSize: 18,
+                          fontSize: 17,
                           fontWeight: FontWeight.w800,
                           color: Color(0xFF0F172A),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 10),
 
                   _isLoadingAddresses
                       ? const Center(
@@ -1171,263 +1102,320 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                             child: CircularProgressIndicator(),
                           ),
                         )
-                      : Column(
-                          children: [
-                            // Saved address cards
-                            if (_savedAddresses.isEmpty)
-                              Container(
-                                padding: const EdgeInsets.all(20),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(
-                                      color: const Color(0xFFE2E8F0)),
-                                ),
-                                child: Center(
-                                  child: Column(
-                                    children: [
-                                      Icon(Icons.location_off_outlined,
-                                          size: 40,
-                                          color: Colors.grey.shade400),
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        'No saved addresses yet',
-                                        style: TextStyle(
-                                            color: Colors.grey.shade600,
-                                            fontWeight: FontWeight.w600),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        'Tap below to add your delivery location',
-                                        style: TextStyle(
-                                            color: Colors.grey.shade400,
-                                            fontSize: 12),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              )
-                            else
-                              ListView.builder(
-                                shrinkWrap: true,
-                                physics:
-                                    const NeverScrollableScrollPhysics(),
-                                itemCount: _savedAddresses.length,
-                                itemBuilder: (context, index) {
-                                  final addr = _savedAddresses[index];
-                                  final isSelected = _selectedAddress !=
-                                          null &&
-                                      _selectedAddress!['id'] == addr['id'];
-                                  final label =
-                                      addr['label'] as String? ?? 'Address';
-
-                                  IconData labelIcon = Icons.location_on;
-                                  if (label == 'Home') {
-                                    labelIcon = Icons.home_rounded;
-                                  } else if (label == 'Work') {
-                                    labelIcon = Icons.work_rounded;
-                                  }
-
-                                  return GestureDetector(
-                                    onTap: () => setState(
-                                        () => _selectedAddress = addr),
-                                    child: Container(
-                                      margin: const EdgeInsets.only(
-                                          bottom: 10),
-                                      padding: const EdgeInsets.all(14),
-                                      decoration: BoxDecoration(
-                                        color: isSelected
-                                            ? const Color(0xFF00B4D8)
-                                                .withValues(alpha: 0.07)
-                                            : Colors.white,
-                                        borderRadius:
-                                            BorderRadius.circular(14),
-                                        border: Border.all(
-                                          color: isSelected
-                                              ? const Color(0xFF00B4D8)
-                                              : const Color(0xFFE2E8F0),
-                                          width: isSelected ? 2 : 1,
-                                        ),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: Colors.black
-                                                .withValues(alpha: 0.03),
-                                            blurRadius: 8,
-                                            offset: const Offset(0, 2),
-                                          ),
-                                        ],
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          Container(
-                                            padding: const EdgeInsets.all(9),
-                                            decoration: BoxDecoration(
-                                              color: isSelected
-                                                  ? const Color(0xFF00B4D8)
-                                                      .withValues(alpha: 0.15)
-                                                  : const Color(0xFFF1F5F9),
-                                              borderRadius:
-                                                  BorderRadius.circular(10),
-                                            ),
-                                            child: Icon(
-                                              labelIcon,
-                                              color: isSelected
-                                                  ? const Color(0xFF00B4D8)
-                                                  : const Color(0xFF64748B),
-                                              size: 20,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 12),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  label,
-                                                  style: TextStyle(
-                                                    fontWeight: FontWeight.w800,
-                                                    fontSize: 14,
-                                                    color: isSelected
-                                                        ? const Color(
-                                                            0xFF00B4D8)
-                                                        : const Color(
-                                                            0xFF0F172A),
-                                                  ),
-                                                ),
-                                                const SizedBox(height: 3),
-                                                Text(
-                                                  addr['address'] as String? ??
-                                                      '',
-                                                  maxLines: 2,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                  style: TextStyle(
-                                                    fontSize: 12,
-                                                    color: Colors.grey.shade600,
-                                                    height: 1.3,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          if (isSelected)
-                                            const Icon(
-                                              Icons.check_circle_rounded,
-                                              color: Color(0xFF00B4D8),
-                                              size: 22,
-                                            )
-                                          else
-                                            IconButton(
-                                              icon: const Icon(
-                                                Icons.delete_outline_rounded,
-                                                color: Color(0xFFCBD5E1),
-                                                size: 20,
-                                              ),
-                                              onPressed: () =>
-                                                  _deleteAddress(
-                                                      addr['id'] as String),
-                                              padding: EdgeInsets.zero,
-                                              constraints:
-                                                  const BoxConstraints(),
-                                            ),
-                                        ],
-                                      ),
-                                    ),
-                                  );
-                                },
+                      : Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.03),
+                                blurRadius: 8,
+                                offset: const Offset(0, 3),
                               ),
-
-                            const SizedBox(height: 10),
-
-                            // Add new address button
-                            InkWell(
-                              onTap: _openMapAndAddAddress,
-                              borderRadius: BorderRadius.circular(14),
-                              child: Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.all(14),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFE3F2FD),
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(
-                                      color: const Color(0xFF00B4D8)
-                                          .withValues(alpha: 0.4)),
-                                ),
-                                child: const Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.center,
+                            ],
+                          ),
+                          child: _selectedAddress != null
+                              ? Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Icon(Icons.add_location_alt_rounded,
-                                        color: Color(0xFF00B4D8), size: 20),
-                                    SizedBox(width: 8),
+                                    Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.all(8),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF00B4D8)
+                                                .withValues(alpha: 0.1),
+                                            borderRadius:
+                                                BorderRadius.circular(10),
+                                          ),
+                                          child: const Icon(
+                                            Icons.location_on_rounded,
+                                            color: Color(0xFF00B4D8),
+                                            size: 20,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        const Expanded(
+                                          child: Text(
+                                            'Delivery Location',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.w800,
+                                              fontSize: 14.5,
+                                              color: Color(0xFF0F172A),
+                                            ),
+                                          ),
+                                        ),
+                                        TextButton.icon(
+                                          onPressed: _openMapAndAddAddress,
+                                          icon: const Icon(
+                                              Icons.edit_location_alt_rounded,
+                                              size: 16,
+                                              color: Color(0xFF00B4D8)),
+                                          label: const Text(
+                                            'Change',
+                                            style: TextStyle(
+                                              color: Color(0xFF00B4D8),
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
                                     Text(
-                                      'Add New Address from Map',
+                                      _cleanDisplayAddress(
+                                          _selectedAddress!['address']
+                                              as String?),
                                       style: TextStyle(
-                                        color: Color(0xFF00B4D8),
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14,
+                                        fontSize: 13.5,
+                                        color: Colors.grey.shade700,
+                                        height: 1.4,
+                                        fontWeight: FontWeight.w500,
                                       ),
                                     ),
                                   ],
+                                )
+                              : InkWell(
+                                  onTap: _openMapAndAddAddress,
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: const Padding(
+                                    padding: EdgeInsets.symmetric(vertical: 8),
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Icon(Icons.add_location_alt_rounded,
+                                            color: Color(0xFF00B4D8)),
+                                        SizedBox(width: 8),
+                                        Text(
+                                          'Set Delivery Location on Map',
+                                          style: TextStyle(
+                                            color: Color(0xFF00B4D8),
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14.5,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 ),
+                        ),
+
+                  const SizedBox(height: 20),
+
+                  // ── Price Breakdown Section ───────────────────────────────
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.03),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(Icons.receipt_long_rounded,
+                                color: Color(0xFF00B4D8), size: 20),
+                            SizedBox(width: 8),
+                            Text(
+                              'Price Breakdown',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF0F172A),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Itemized product lines
+                        ..._itemsToOrder.map((item) {
+                          final name = item['name'] ?? 'Product';
+                          final qty = (item['quantity'] as num).toDouble();
+                          final price = (item['pricePerKg'] as num).toDouble();
+                          final total = price * qty;
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 8.0),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    '$name (${qty.toStringAsFixed(1)} kg)',
+                                    style: TextStyle(
+                                      fontSize: 13.5,
+                                      color: Colors.grey.shade700,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                                Text(
+                                  '₹${total.toStringAsFixed(2)}',
+                                  style: const TextStyle(
+                                    fontSize: 13.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF0F172A),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }),
+
+                        const Divider(height: 16),
+
+                        // Items subtotal
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Items Total',
+                              style: TextStyle(
+                                fontSize: 13.5,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                            Text(
+                              '₹${_calculatedTotal.toStringAsFixed(2)}',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF0F172A),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+
+                        // Delivery fee
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Delivery Fee',
+                              style: TextStyle(
+                                fontSize: 13.5,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                            const Text(
+                              'FREE',
+                              style: TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+
+                        // Packaging & Handling
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Packaging & Handling',
+                              style: TextStyle(
+                                fontSize: 13.5,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                            const Text(
+                              'FREE',
+                              style: TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green,
                               ),
                             ),
                           ],
                         ),
 
-                  const SizedBox(height: 16),
+                        const Divider(height: 20),
 
-                  // ── Phone Input ────────────────────────────────────
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.03),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
+                        // Grand Total
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'Total Amount To Pay',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF0F172A),
+                              ),
+                            ),
+                            Text(
+                              '₹${_calculatedTotal.toStringAsFixed(2)}',
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w900,
+                                color: Color(0xFF00B4D8),
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 12),
+
+                        // COD Badge
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.money_rounded,
+                                  color: Colors.green, size: 18),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Cash on Delivery — Pay upon receipt of order',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey.shade700,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
-                    child: TextField(
-                      controller: _phoneController,
-                      keyboardType: TextInputType.phone,
-                      style: const TextStyle(
-                          fontSize: 15, color: Colors.black87),
-                      decoration: InputDecoration(
-                        hintText: 'Phone Number',
-                        hintStyle:
-                            TextStyle(color: Colors.grey.shade400),
-                        filled: true,
-                        fillColor: Colors.white,
-                        contentPadding: const EdgeInsets.all(16),
-                        prefixIcon: Icon(
-                          Icons.phone_outlined,
-                          color: Colors.grey.shade500,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                    ),
                   ),
-                  const SizedBox(height: 32),
 
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 28),
 
-                  // ── Place Order Button ─────────────────────────────
+                  // ── Place Order Button ────────────────────────────────────
                   SizedBox(
                     width: double.infinity,
-                    height: 60,
+                    height: 56,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF00B4D8),
                         foregroundColor: Colors.white,
-                        elevation: 0,
+                        elevation: 2,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
                         ),
@@ -1442,17 +1430,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                 strokeWidth: 3,
                               ),
                             )
-                          : const Text(
-                              'PLACE ORDER',
-                              style: TextStyle(
+                          : Text(
+                              'PLACE ORDER  •  ₹${_calculatedTotal.toStringAsFixed(2)}',
+                              style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w900,
-                                letterSpacing: 1.5,
+                                letterSpacing: 0.8,
                               ),
                             ),
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 24),
                 ],
               ),
             ),

@@ -191,7 +191,7 @@ class _OrdersScreenState extends State<OrdersScreen> with AutomaticKeepAliveClie
     
     return ListView.builder(
       physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
       itemCount: docs.length,
       itemBuilder: (context, index) {
         final data = docs[index].data() as Map<String, dynamic>;

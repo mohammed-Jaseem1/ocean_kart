@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../shop_keeper/dashboard_screen.dart';
 import '../delevery_partner/delivery_partner_dashboard.dart';
 
@@ -181,26 +182,106 @@ class _LocationSetupScreenState extends State<LocationSetupScreen> with SingleTi
     _fetchAddressFromLatLng(_currentPosition);
   }
 
+  static const String _fallbackGoogleMapsKey =
+      'AIzaSyDFkC8KCvcYhM-QDYsCZkO_YKghe8Z66Tk';
+
+  String _getGoogleApiKey() {
+    final envKey = dotenv.env['GOOGLE_MAPS_API_KEY']?.trim();
+    if (envKey != null && envKey.isNotEmpty) return envKey;
+    return _fallbackGoogleMapsKey;
+  }
+
+  String _cleanGoogleAddress(String raw) {
+    return raw.replaceFirst(RegExp(r'^[A-Z0-9]{2,8}\+[A-Z0-9]{2,4}[\s,]+'), '').trim();
+  }
+
+  String _selectBestGoogleAddress(List<dynamic> results) {
+    if (results.isEmpty) return '';
+
+    dynamic bestResult;
+
+    // 1. Prefer a result with a 6-digit Indian PIN code and not exclusively a plus_code type
+    for (var r in results) {
+      final types = (r['types'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [];
+      final addr = r['formatted_address']?.toString() ?? '';
+      if (RegExp(r'\b\d{6}\b').hasMatch(addr) && !types.contains('plus_code')) {
+        bestResult = r;
+        break;
+      }
+    }
+
+    // 2. If not found, look for any result with a 6-digit PIN code
+    if (bestResult == null) {
+      for (var r in results) {
+        final addr = r['formatted_address']?.toString() ?? '';
+        if (RegExp(r'\b\d{6}\b').hasMatch(addr)) {
+          bestResult = r;
+          break;
+        }
+      }
+    }
+
+    // 3. Fallback to first non-plus_code result
+    if (bestResult == null) {
+      for (var r in results) {
+        final types = (r['types'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [];
+        if (!types.contains('plus_code')) {
+          bestResult = r;
+          break;
+        }
+      }
+    }
+
+    bestResult ??= results.first;
+    final raw = bestResult['formatted_address']?.toString() ?? '';
+    return _cleanGoogleAddress(raw);
+  }
+
   Future<void> _fetchAddressFromLatLng(LatLng position) async {
     setState(() => _currentAddress = 'Fetching address details...');
 
+    // 1. Try Google Geocoding API first
+    final googleKey = _getGoogleApiKey();
+    if (googleKey.isNotEmpty) {
+      try {
+        final googleUrl = Uri.parse(
+          'https://maps.googleapis.com/maps/api/geocode/json?latlng=${position.latitude},${position.longitude}&key=$googleKey',
+        );
+        final response = await http.get(googleUrl).timeout(const Duration(seconds: 8));
+        if (response.statusCode == 200) {
+          final data = json.decode(response.body);
+          if (data['status'] == 'OK' && (data['results'] as List).isNotEmpty) {
+            final cleaned = _selectBestGoogleAddress(data['results'] as List);
+            if (cleaned.isNotEmpty && mounted) {
+              setState(() {
+                _currentAddress = cleaned;
+              });
+              return;
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('Google Geocoding error: $e');
+      }
+    }
+
+    // 2. Fallback to OpenStreetMap Nominatim
     try {
       final url = Uri.parse(
         'https://nominatim.openstreetmap.org/reverse?format=json&lat=${position.latitude}&lon=${position.longitude}&zoom=18&addressdetails=1',
       );
       final response = await http.get(
         url,
-        headers: {'User-Agent': 'OceanKartShopDeliveryApp/1.0'},
+        headers: {'User-Agent': 'OceanKartShopDeliveryApp/1.0 (contact@oceankart.com)'},
       );
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        if (data['display_name'] != null && mounted) {
+        if (mounted) {
+          final clean = _formatCleanAddress(data, position);
           setState(() {
-            _currentAddress = data['display_name'];
+            _currentAddress = clean;
           });
-        } else if (mounted) {
-          setState(() => _currentAddress = 'Pinned Store Location');
         }
       } else if (mounted) {
         setState(() => _currentAddress = 'Coordinates: ${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)}');
@@ -210,6 +291,79 @@ class _LocationSetupScreenState extends State<LocationSetupScreen> with SingleTi
         setState(() => _currentAddress = 'Coordinates: ${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)}');
       }
     }
+  }
+
+  String _formatCleanAddress(dynamic data, LatLng position) {
+    if (data is! Map<String, dynamic>) {
+      return 'Coordinates: ${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)}';
+    }
+
+    final addr = data['address'] as Map<String, dynamic>?;
+    if (addr == null) {
+      return data['display_name'] ??
+          'Coordinates: ${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)}';
+    }
+
+    final List<String> parts = [];
+
+    // House / Building
+    final house = addr['house_number'] ?? addr['house_name'] ?? addr['building'];
+    if (house != null && house.toString().trim().isNotEmpty) {
+      parts.add(house.toString().trim());
+    }
+
+    // Road / Street
+    final road = addr['road'] ?? addr['street'] ?? addr['residential'] ?? addr['pedestrian'];
+    if (road != null &&
+        road.toString().trim().isNotEmpty &&
+        !road.toString().toLowerCase().contains('unnamed')) {
+      parts.add(road.toString().trim());
+    }
+
+    // Locality / Suburb / Neighbourhood
+    final locality = addr['suburb'] ??
+        addr['neighbourhood'] ??
+        addr['residential'] ??
+        addr['subdistrict'];
+    if (locality != null &&
+        locality.toString().trim().isNotEmpty &&
+        !parts.contains(locality.toString().trim())) {
+      parts.add(locality.toString().trim());
+    }
+
+    // City / Town / Village / District
+    final city = addr['city'] ??
+        addr['town'] ??
+        addr['village'] ??
+        addr['municipality'] ??
+        addr['county'] ??
+        addr['district'];
+    if (city != null &&
+        city.toString().trim().isNotEmpty &&
+        !parts.contains(city.toString().trim())) {
+      parts.add(city.toString().trim());
+    }
+
+    // State
+    final state = addr['state'];
+    if (state != null &&
+        state.toString().trim().isNotEmpty &&
+        !parts.contains(state.toString().trim())) {
+      parts.add(state.toString().trim());
+    }
+
+    // Postcode
+    final postcode = addr['postcode'];
+    if (postcode != null && postcode.toString().trim().isNotEmpty) {
+      parts.add(postcode.toString().trim());
+    }
+
+    if (parts.isNotEmpty) {
+      return parts.join(', ');
+    }
+
+    return data['display_name'] ??
+        'Coordinates: ${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)}';
   }
 
   Future<void> _searchLocation(String query) async {

@@ -5,10 +5,23 @@ import 'package:pinput/pinput.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../../services/otp_service.dart';
+import '../dashboard_screen.dart';
 
 class UserRegistrationPage extends StatefulWidget {
-  const UserRegistrationPage({super.key});
+  final bool isGoogleUser;
+  final String? initialEmail;
+  final String? initialName;
+  final String? initialPhotoUrl;
+
+  const UserRegistrationPage({
+    super.key,
+    this.isGoogleUser = false,
+    this.initialEmail,
+    this.initialName,
+    this.initialPhotoUrl,
+  });
 
   @override
   State<UserRegistrationPage> createState() => _UserRegistrationPageState();
@@ -30,6 +43,20 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
   bool _isPhoneVerified = false;
   bool _isSendingOtp = false;
   String? _profileImageUrl;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialName != null && widget.initialName!.isNotEmpty) {
+      _nameController.text = widget.initialName!;
+    }
+    if (widget.initialEmail != null && widget.initialEmail!.isNotEmpty) {
+      _emailController.text = widget.initialEmail!;
+    }
+    if (widget.initialPhotoUrl != null && widget.initialPhotoUrl!.isNotEmpty) {
+      _profileImageUrl = widget.initialPhotoUrl;
+    }
+  }
 
   @override
   void dispose() {
@@ -447,12 +474,35 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
       final String email = _emailController.text.trim();
       final String password = _passwordController.text;
 
-      // Step 1: Create user with Email & Password
-      final UserCredential userCredential = await FirebaseAuth.instance
-          .createUserWithEmailAndPassword(email: email, password: password);
+      User? user;
+      String uid = '';
 
-      final User? user = userCredential.user;
-      final String uid = user!.uid;
+      if (widget.isGoogleUser) {
+        user = FirebaseAuth.instance.currentUser;
+        if (user == null) {
+          throw Exception('Google session expired. Please sign in with Google again.');
+        }
+        uid = user.uid;
+
+        // Step 1: Set up password for Google account
+        try {
+          final cred = EmailAuthProvider.credential(email: email, password: password);
+          await user.linkWithCredential(cred);
+        } catch (linkErr) {
+          debugPrint('linkWithCredential note: $linkErr');
+          try {
+            await user.updatePassword(password);
+          } catch (pwErr) {
+            debugPrint('updatePassword note: $pwErr');
+          }
+        }
+      } else {
+        // Step 1: Create user with Email & Password
+        final UserCredential userCredential = await FirebaseAuth.instance
+            .createUserWithEmailAndPassword(email: email, password: password);
+        user = userCredential.user;
+        uid = user!.uid;
+      }
 
       // Step 2: Link verified phone number to Firebase Auth
       try {
@@ -463,11 +513,13 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
         debugPrint('linkPhoneNumber warning: $e');
       }
 
-      // Step 3: Send Email Verification link in background (optional)
-      try {
-        await user.sendEmailVerification();
-      } catch (e) {
-        debugPrint('sendEmailVerification non-fatal error: $e');
+      // Step 3: Send Email Verification link in background (only for standard email registration)
+      if (!widget.isGoogleUser) {
+        try {
+          await user.sendEmailVerification();
+        } catch (e) {
+          debugPrint('sendEmailVerification non-fatal error: $e');
+        }
       }
 
       // Step 4: Save active user data to Firestore
@@ -478,19 +530,40 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
         'mobileNumber': rawPhone,
         'email': email,
         'address': _addressController.text.trim(),
-        'photoUrl': _profileImageUrl ?? '',
+        'photoUrl': _profileImageUrl ?? widget.initialPhotoUrl ?? '',
         'phoneVerified': true,
-        'emailVerified': user.emailVerified,
+        'emailVerified': widget.isGoogleUser ? true : user.emailVerified,
+        'authProvider': widget.isGoogleUser ? 'google' : 'email',
         'createdAt': FieldValue.serverTimestamp(),
         'status': 'active',
-      });
+      }, SetOptions(merge: true));
+
+      try {
+        await user.updateDisplayName(_nameController.text.trim());
+        if (_profileImageUrl != null && _profileImageUrl!.isNotEmpty) {
+          await user.updatePhotoURL(_profileImageUrl);
+        }
+      } catch (_) {}
 
       if (mounted) {
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) => EmailSentSkipDialog(email: email),
-        );
+        if (widget.isGoogleUser) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Account created successfully! Welcome to OceanKart!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const DashboardScreen()),
+            (route) => false,
+          );
+        } else {
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => EmailSentSkipDialog(email: email),
+          );
+        }
       }
     } on FirebaseAuthException catch (e) {
       String errorMessage = 'An error occurred during registration.';
@@ -534,6 +607,8 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
     String? hintText,
     VoidCallback? onToggleObscure,
     String? Function(String?)? customValidator,
+    Widget? suffixWidget,
+    Color? fillColor,
   }) {
     const primaryBlue = Color(0xFF00B4D8);
     const textColor = Color(0xFF0F172A);
@@ -574,57 +649,58 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
           hintText: hintText ?? 'Enter $label',
           hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
           prefixIcon: Icon(icon, color: primaryBlue, size: 20),
-          suffixIcon: isPhone
-              ? (_isPhoneVerified
-                  ? Container(
-                      margin: const EdgeInsets.all(8),
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.green.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.check_circle, color: Colors.green, size: 16),
-                          SizedBox(width: 4),
-                          Text('Verified', style: TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                    )
-                  : Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: TextButton(
-                        onPressed: _isSendingOtp ? null : _handleSendOtp,
-                        style: TextButton.styleFrom(
-                          foregroundColor: primaryBlue,
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                        ),
-                        child: _isSendingOtp
-                            ? const SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: primaryBlue),
-                              )
-                            : const Text(
-                                'Send OTP',
-                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                              ),
-                      ),
-                    ))
-              : isPassword
-                  ? IconButton(
-                      icon: Icon(
-                        obscureText ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-                        color: const Color(0xFF64748B),
-                        size: 20,
-                      ),
-                      onPressed: onToggleObscure,
-                    )
-                  : null,
+          suffixIcon: suffixWidget ??
+              (isPhone
+                  ? (_isPhoneVerified
+                      ? Container(
+                          margin: const EdgeInsets.all(8),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.check_circle, color: Colors.green, size: 16),
+                              SizedBox(width: 4),
+                              Text('Verified', style: TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                        )
+                      : Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: TextButton(
+                            onPressed: _isSendingOtp ? null : _handleSendOtp,
+                            style: TextButton.styleFrom(
+                              foregroundColor: primaryBlue,
+                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                            ),
+                            child: _isSendingOtp
+                                ? const SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: primaryBlue),
+                                  )
+                                : const Text(
+                                    'Send OTP',
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                  ),
+                          ),
+                        ))
+                  : isPassword
+                      ? IconButton(
+                          icon: Icon(
+                            obscureText ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                            color: const Color(0xFF64748B),
+                            size: 20,
+                          ),
+                          onPressed: onToggleObscure,
+                        )
+                      : null),
           filled: true,
-          fillColor: Colors.white,
+          fillColor: fillColor ?? Colors.white,
           contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
@@ -667,153 +743,217 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
     const primaryBlue = Color(0xFF00B4D8);
     const textColor = Color(0xFF0F172A);
 
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
+    return PopScope(
+      canPop: !widget.isGoogleUser,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (!didPop && widget.isGoogleUser) {
+          await FirebaseAuth.instance.signOut();
+          try {
+            await GoogleSignIn.instance.signOut();
+          } catch (_) {}
+          if (context.mounted) {
+            Navigator.of(context).maybePop();
+          }
+        }
+      },
+      child: Scaffold(
         backgroundColor: Colors.white,
-        elevation: 0,
-        title: const Text(
-          'Customer Registration',
-          style: TextStyle(
-            color: textColor,
-            fontWeight: FontWeight.bold,
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+            onPressed: () async {
+              if (widget.isGoogleUser) {
+                await FirebaseAuth.instance.signOut();
+                try {
+                  await GoogleSignIn.instance.signOut();
+                } catch (_) {}
+              }
+              if (context.mounted) {
+                Navigator.of(context).maybePop();
+              }
+            },
           ),
+          title: Text(
+            widget.isGoogleUser ? 'Complete Registration' : 'Customer Registration',
+            style: const TextStyle(
+              color: textColor,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          iconTheme: const IconThemeData(color: textColor),
         ),
-        iconTheme: const IconThemeData(color: textColor),
-      ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
-          child: Align(
-            heightFactor: 1.0,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 550),
-              child: SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : _submit,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryBlue,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+        bottomNavigationBar: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+            child: Align(
+              heightFactor: 1.0,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 550),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: ElevatedButton(
+                    onPressed: _isLoading ? null : _submit,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryBlue,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      elevation: 2,
+                      shadowColor: primaryBlue.withValues(alpha: 0.3),
                     ),
-                    elevation: 2,
-                    shadowColor: primaryBlue.withValues(alpha: 0.3),
+                    child: _isLoading
+                        ? const SizedBox(
+                            height: 22,
+                            width: 22,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          )
+                        : Text(
+                            widget.isGoogleUser ? 'Complete Registration' : 'Register Account',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
                   ),
-                  child: _isLoading
-                      ? const SizedBox(
-                          height: 22,
-                          width: 22,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.5,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        )
-                      : const Text(
-                          'Register Account',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
                 ),
               ),
             ),
           ),
         ),
-      ),
-      body: Align(
-        alignment: Alignment.topCenter,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 550),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Optional Profile Picture Picker
-                  Center(
-                    child: GestureDetector(
-                      onTap: _pickProfileImage,
-                      child: Stack(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(3),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(color: primaryBlue.withValues(alpha: 0.3), width: 2),
-                            ),
-                            child: CircleAvatar(
-                              radius: 38,
-                              backgroundColor: const Color(0xFFF1F5F9),
-                              backgroundImage: _profileImageUrl != null && _profileImageUrl!.isNotEmpty
-                                  ? NetworkImage(_profileImageUrl!) as ImageProvider
-                                  : null,
-                              child: _profileImageUrl == null || _profileImageUrl!.isEmpty
-                                  ? const Icon(Icons.person_rounded, size: 42, color: primaryBlue)
-                                  : null,
-                            ),
-                          ),
-                          Positioned(
-                            bottom: 0,
-                            right: 0,
-                            child: Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: const BoxDecoration(
-                                color: primaryBlue,
+        body: Align(
+          alignment: Alignment.topCenter,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 550),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Optional Profile Picture Picker
+                    Center(
+                      child: GestureDetector(
+                        onTap: _pickProfileImage,
+                        child: Stack(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(3),
+                              decoration: BoxDecoration(
                                 shape: BoxShape.circle,
+                                border: Border.all(color: primaryBlue.withValues(alpha: 0.3), width: 2),
                               ),
-                              child: const Icon(
-                                Icons.camera_alt_rounded,
-                                size: 14,
-                                color: Colors.white,
+                              child: CircleAvatar(
+                                radius: 38,
+                                backgroundColor: const Color(0xFFF1F5F9),
+                                backgroundImage: _profileImageUrl != null && _profileImageUrl!.isNotEmpty
+                                    ? NetworkImage(_profileImageUrl!) as ImageProvider
+                                    : null,
+                                child: _profileImageUrl == null || _profileImageUrl!.isEmpty
+                                    ? const Icon(Icons.person_rounded, size: 42, color: primaryBlue)
+                                    : null,
                               ),
                             ),
-                          ),
-                        ],
+                            Positioned(
+                              bottom: 0,
+                              right: 0,
+                              child: Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: const BoxDecoration(
+                                  color: primaryBlue,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.camera_alt_rounded,
+                                  size: 14,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  const Center(
-                    child: Text(
-                      'Add Profile Photo',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF64748B),
-                        fontWeight: FontWeight.w500,
+                    const SizedBox(height: 4),
+                    const Center(
+                      child: Text(
+                        'Add Profile Photo',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF64748B),
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
+                    const SizedBox(height: 16),
 
-                  _buildTextField(
-                    controller: _nameController,
-                    label: 'Full Name',
-                    icon: Icons.badge_outlined,
-                    isRequired: true,
-                  ),
-                  _buildTextField(
-                    controller: _mobileController,
-                    label: 'Mobile Number',
-                    hintText: 'mobile number',
-                    icon: Icons.phone_android_outlined,
-                    isRequired: true,
-                    isPhone: true,
-                    readOnly: _isPhoneVerified,
-                  ),
-                  _buildTextField(
-                    controller: _emailController,
-                    label: 'Email Address',
-                    icon: Icons.email_outlined,
-                    isRequired: true,
-                    isEmail: true,
-                  ),
+                    if (widget.isGoogleUser) ...[
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 16),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF0FDF4),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFF86EFAC)),
+                        ),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 20),
+                            SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'Google email verified. Please verify your mobile number and set up your password to finish creating your account.',
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  color: Color(0xFF166534),
+                                  fontWeight: FontWeight.w600,
+                                  height: 1.3,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+
+                    _buildTextField(
+                      controller: _nameController,
+                      label: 'Full Name',
+                      icon: Icons.badge_outlined,
+                      isRequired: true,
+                    ),
+                    _buildTextField(
+                      controller: _mobileController,
+                      label: 'Mobile Number',
+                      hintText: 'mobile number',
+                      icon: Icons.phone_android_outlined,
+                      isRequired: true,
+                      isPhone: true,
+                      readOnly: _isPhoneVerified,
+                    ),
+                    _buildTextField(
+                      controller: _emailController,
+                      label: 'Email Address',
+                      icon: Icons.email_outlined,
+                      isRequired: true,
+                      isEmail: true,
+                      readOnly: widget.isGoogleUser,
+                      fillColor: widget.isGoogleUser ? const Color(0xFFF8FAFC) : null,
+                      suffixWidget: widget.isGoogleUser
+                          ? const Padding(
+                              padding: EdgeInsets.only(right: 12),
+                              child: Icon(Icons.lock_rounded, size: 18, color: Color(0xFF94A3B8)),
+                            )
+                          : null,
+                    ),
                   _buildTextField(
                     controller: _addressController,
                     label: 'Area / Landmark (optional)',
@@ -857,8 +997,9 @@ class _UserRegistrationPageState extends State<UserRegistrationPage> {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }
 
 class EmailVerificationDialog extends StatefulWidget {

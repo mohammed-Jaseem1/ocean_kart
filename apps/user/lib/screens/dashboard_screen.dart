@@ -196,7 +196,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               SliverToBoxAdapter(child: _buildCategories()),
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.only(top: 24, bottom: 12, left: 16),
+                  padding: const EdgeInsets.only(top: 8, bottom: 12, left: 16),
                   child: Text(
                     'Top brands near you',
                     style: TextStyle(
@@ -208,20 +208,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
               SliverToBoxAdapter(child: _buildTopBrands()),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
-                  child: Text(
-                    'Fresh Stock Available',
-                    style: TextStyle(
-                      color: _textColor.withValues(alpha: 0.9),
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ),
-              ),
               StreamBuilder<QuerySnapshot>(
                 stream: _productsStream,
                 builder: (context, snapshot) {
@@ -285,18 +271,135 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     );
                   }
 
-                  return SliverPadding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                    sliver: SliverGrid(
-                      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                        maxCrossAxisExtent: 200.0,
-                        mainAxisSpacing: 12.0,
-                        crossAxisSpacing: 12.0,
-                        childAspectRatio: 0.69, // Optimized for new card design
-                      ),
-                      delegate: SliverChildBuilderDelegate((context, index) {
-                        return _buildProductCard(docs[index]);
-                      }, childCount: docs.length),
+                  // Group products by category
+                  final Map<String, List<DocumentSnapshot>> categoryMap = {};
+                  for (var doc in docs) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    String cat = (data['category'] ?? '').toString().trim();
+                    if (cat.isEmpty) {
+                      cat = 'Fresh Catch';
+                    }
+                    categoryMap.putIfAbsent(cat, () => []).add(doc);
+                  }
+
+                  final categories = categoryMap.keys.toList();
+                  categories.sort((a, b) {
+                    if (a.toLowerCase().contains('fish')) return -1;
+                    if (b.toLowerCase().contains('fish')) return 1;
+                    return a.compareTo(b);
+                  });
+
+                  return SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, catIndex) {
+                        final categoryName = categories[catIndex];
+                        final catDocs = categoryMap[categoryName]!;
+
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Category Section Header
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Text(
+                                        categoryName,
+                                        style: TextStyle(
+                                          color: _textColor,
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.w800,
+                                          letterSpacing: -0.3,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 7, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF00B4D8)
+                                              .withValues(alpha: 0.1),
+                                          borderRadius:
+                                              BorderRadius.circular(10),
+                                        ),
+                                        child: Text(
+                                          '${catDocs.length}',
+                                          style: const TextStyle(
+                                            color: Color(0xFF00B4D8),
+                                            fontSize: 11.5,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  GestureDetector(
+                                    onTap: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) =>
+                                              CategoryProductsScreen(
+                                            categoryName: categoryName,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                    child: const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          'See all',
+                                          style: TextStyle(
+                                            color: Color(0xFF00B4D8),
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                        SizedBox(width: 3),
+                                        Icon(
+                                          Icons.arrow_forward_ios_rounded,
+                                          size: 11,
+                                          color: Color(0xFF00B4D8),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            // Grid of products for this category
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16.0),
+                              child: GridView.builder(
+                                shrinkWrap: true,
+                                physics:
+                                    const NeverScrollableScrollPhysics(),
+                                gridDelegate:
+                                    const SliverGridDelegateWithMaxCrossAxisExtent(
+                                  maxCrossAxisExtent: 200.0,
+                                  mainAxisSpacing: 12.0,
+                                  crossAxisSpacing: 12.0,
+                                  childAspectRatio: 0.69,
+                                ),
+                                itemCount: catDocs.length,
+                                itemBuilder: (context, index) {
+                                  return _buildProductCard(catDocs[index]);
+                                },
+                              ),
+                            ),
+
+                            const SizedBox(height: 8),
+                          ],
+                        );
+                      },
+                      childCount: categories.length,
                     ),
                   );
                 },
@@ -559,141 +662,255 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ],
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Left: Location selector
-          _buildLocationSelector(),
-
-          // Right: Collapsed Search option and Cart
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              GestureDetector(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => SearchScreen(
-                        selectedLocation: _selectedLocation,
-                        shopDataMap: _shopDataMap,
-                      ),
+          // Left: Search Icon Button (40x40 to match cart icon)
+          SizedBox(
+            width: 40,
+            height: 40,
+            child: IconButton(
+              icon: Icon(Icons.search_rounded, color: _textColor, size: 24),
+              padding: EdgeInsets.zero,
+              tooltip: 'Search',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => SearchScreen(
+                      selectedLocation: _selectedLocation,
+                      shopDataMap: _shopDataMap,
                     ),
-                  );
-                },
-                child: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF1F5F9),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
                   ),
-                  child: Icon(Icons.search, color: _textColor, size: 20),
-                ),
-              ),
-              const SizedBox(width: 10),
-              _buildCartIcon(),
-            ],
+                );
+              },
+            ),
           ),
+
+          // Center: Perfectly centered Location Selector
+          Expanded(
+            child: Center(
+              child: _buildLocationSelector(),
+            ),
+          ),
+
+          // Right: Cart icon (40x40)
+          _buildCartIcon(),
         ],
       ),
     );
   }
 
   Widget _buildLocationSelector() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF1F5F9),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      child: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance.collection('locations').snapshots(),
-        builder: (context, locSnap) {
-          final List<String> places = ['All Locations'];
-          if (locSnap.hasData) {
-            final dbPlaces = locSnap.data!.docs
-                .map((d) => ((d.data() as Map<String, dynamic>)['name'] ?? '').toString().trim())
-                .where((n) => n.isNotEmpty)
-                .toList();
-            dbPlaces.sort((a, b) => a.compareTo(b));
-            places.addAll(dbPlaces);
-          }
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance.collection('locations').snapshots(),
+      builder: (context, locSnap) {
+        final List<String> places = ['All Locations'];
+        if (locSnap.hasData) {
+          final dbPlaces = locSnap.data!.docs
+              .map((d) =>
+                  ((d.data() as Map<String, dynamic>)['name'] ?? '').toString().trim())
+              .where((n) => n.isNotEmpty)
+              .toList();
+          dbPlaces.sort((a, b) => a.compareTo(b));
+          places.addAll(dbPlaces);
+        }
 
-          final String currentDisplay = places.contains(_selectedLocation)
-              ? _selectedLocation
-              : (places.length > 1 ? places[1] : 'All Locations');
+        final String currentDisplay = places.contains(_selectedLocation)
+            ? _selectedLocation
+            : (places.length > 1 ? places[1] : 'All Locations');
 
-          return Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.location_on, color: Colors.redAccent, size: 18),
-              const SizedBox(width: 4),
-              PopupMenuButton<String>(
-                position: PopupMenuPosition.under,
-                color: Colors.white,
-                surfaceTintColor: Colors.white,
-                constraints: const BoxConstraints(maxHeight: 300, maxWidth: 220),
-                onSelected: (String newValue) {
-                  setState(() {
-                    _selectedLocation = newValue;
-                  });
-                },
-                itemBuilder: (BuildContext context) {
-                  return places.map((String place) {
-                    final bool isSelected = place == currentDisplay;
-                    return PopupMenuItem<String>(
-                      value: place,
-                      height: 38,
-                      child: Row(
-                        children: [
-                          if (place == 'All Locations')
-                            const Icon(Icons.public, size: 16, color: Colors.grey)
-                          else
-                            const Icon(Icons.place, size: 16, color: Color(0xFF00B4D8)),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              place,
+        return InkWell(
+          onTap: () => _showLocationBottomSheet(places),
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.location_on, color: Colors.redAccent, size: 18),
+                const SizedBox(width: 4),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 180),
+                  child: Text(
+                    currentDisplay,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: _textColor,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 2),
+                Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  color: _textColor,
+                  size: 20,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showLocationBottomSheet(List<String> places) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        String filterQuery = '';
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            final filteredPlaces = places.where((p) {
+              if (filterQuery.isEmpty) return true;
+              return p.toLowerCase().contains(filterQuery.toLowerCase());
+            }).toList();
+
+            return Material(
+              color: Colors.white,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              clipBehavior: Clip.antiAlias,
+              child: SizedBox(
+                height: MediaQuery.of(context).size.height * 0.65,
+                child: Column(
+                children: [
+                  // Drag Handle
+                  Container(
+                    margin: const EdgeInsets.only(top: 10, bottom: 6),
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+
+                  // Header
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(Icons.location_on, color: Color(0xFF00B4D8), size: 22),
+                            SizedBox(width: 8),
+                            Text(
+                              'Select Location',
                               style: TextStyle(
-                                color: isSelected ? const Color(0xFF00B4D8) : Colors.black87,
-                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                fontSize: 13,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF0F172A),
                               ),
                             ),
-                          ),
-                          if (isSelected)
-                            const Icon(Icons.check, size: 16, color: Color(0xFF00B4D8)),
-                        ],
+                          ],
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close),
+                          onPressed: () => Navigator.pop(ctx),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Search Filter
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
                       ),
-                    );
-                  }).toList();
-                },
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 130),
-                      child: Text(
-                        currentDisplay,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.black87,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
+                      child: TextField(
+                        onChanged: (val) {
+                          setSheetState(() {
+                            filterQuery = val.trim();
+                          });
+                        },
+                        style: const TextStyle(fontSize: 14),
+                        decoration: InputDecoration(
+                          hintText: 'Search city or area...',
+                          hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13.5),
+                          prefixIcon: const Icon(Icons.search, color: Colors.grey, size: 20),
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                         ),
                       ),
                     ),
-                    Icon(Icons.arrow_drop_down, color: Colors.grey.shade600),
-                  ],
-                ),
+                  ),
+
+                  const Divider(height: 1),
+
+                  // List of locations
+                  Expanded(
+                    child: ListView.separated(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      itemCount: filteredPlaces.length,
+                      separatorBuilder: (_, _) => Divider(
+                        height: 1,
+                        indent: 16,
+                        endIndent: 16,
+                        color: Colors.grey.shade100,
+                      ),
+                      itemBuilder: (context, index) {
+                        final place = filteredPlaces[index];
+                        final isSelected = place == _selectedLocation ||
+                            (place == 'All Locations' &&
+                                (_selectedLocation == 'All' || _selectedLocation == 'All Locations'));
+
+                        return ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
+                          leading: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? const Color(0xFF00B4D8).withValues(alpha: 0.12)
+                                  : const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Icon(
+                              place == 'All Locations'
+                                  ? Icons.public_rounded
+                                  : Icons.location_on_rounded,
+                              color: isSelected
+                                  ? const Color(0xFF00B4D8)
+                                  : const Color(0xFF64748B),
+                              size: 20,
+                            ),
+                          ),
+                          title: Text(
+                            place,
+                            style: TextStyle(
+                              fontSize: 14.5,
+                              fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                              color: isSelected ? const Color(0xFF00B4D8) : const Color(0xFF0F172A),
+                            ),
+                          ),
+                          trailing: isSelected
+                              ? const Icon(Icons.check_circle_rounded,
+                                  color: Color(0xFF00B4D8), size: 22)
+                              : null,
+                          onTap: () {
+                            setState(() {
+                              _selectedLocation = place;
+                            });
+                            Navigator.pop(ctx);
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           );
         },
-      ),
+        );
+      },
     );
   }
 
@@ -811,7 +1028,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _buildCategories() {
     return SizedBox(
-      height: 128,
+      height: 108,
       child: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection('categories')
@@ -1332,64 +1549,100 @@ class _DashboardScreenState extends State<DashboardScreen> {
 }
 
   Widget _buildBottomNav() {
-    return Container(
-      decoration: BoxDecoration(
-        color: _cardColor,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, -5),
+    return SafeArea(
+      top: false,
+      left: false,
+      right: false,
+      bottom: true,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 10),
+        child: Container(
+          height: 66,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(36),
+            border: Border.all(
+              color: const Color(0xFFE5E7EB),
+              width: 1.0,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.07),
+                blurRadius: 16,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
-        ],
+          child: Row(
+            children: [
+              _buildNavItem(
+                index: 0,
+                label: 'Home',
+                icon: Icons.home_outlined,
+                activeIcon: Icons.home_rounded,
+              ),
+              _buildNavItem(
+                index: 1,
+                label: 'Orders',
+                icon: Icons.receipt_long_outlined,
+                activeIcon: Icons.receipt_long_rounded,
+              ),
+              _buildNavItem(
+                index: 2,
+                label: 'Profile',
+                icon: Icons.person_outline_rounded,
+                activeIcon: Icons.person_rounded,
+              ),
+            ],
+          ),
+        ),
       ),
-      child: BottomNavigationBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        type: BottomNavigationBarType.fixed,
-        currentIndex: _selectedIndex,
-        selectedItemColor: _lightBlue,
-        unselectedItemColor: _textColor.withValues(alpha: 0.4),
-        selectedLabelStyle: const TextStyle(
-          fontWeight: FontWeight.bold,
-          fontSize: 12,
-        ),
-        unselectedLabelStyle: const TextStyle(
-          fontWeight: FontWeight.normal,
-          fontSize: 12,
-        ),
-        onTap: (index) {
+    );
+  }
+
+  Widget _buildNavItem({
+    required int index,
+    required String label,
+    required IconData icon,
+    required IconData activeIcon,
+  }) {
+    final isSelected = _selectedIndex == index;
+    final color = isSelected ? _lightBlue : const Color(0xFF8E8E93);
+
+    return Expanded(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
           setState(() {
             _selectedIndex = index;
           });
         },
-        items: const [
-          BottomNavigationBarItem(
-            icon: Padding(
-              padding: EdgeInsets.only(bottom: 4),
-              child: Icon(Icons.delivery_dining),
-            ),
-            label: 'Delivery',
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                isSelected ? activeIcon : icon,
+                color: color,
+                size: 24,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                  color: color,
+                  letterSpacing: -0.1,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
           ),
-          BottomNavigationBarItem(
-            icon: Padding(
-              padding: EdgeInsets.only(bottom: 4),
-              child: Icon(Icons.receipt_long_outlined),
-            ),
-            label: 'Orders',
-          ),
-          BottomNavigationBarItem(
-            icon: Padding(
-              padding: EdgeInsets.only(bottom: 4),
-              child: Icon(Icons.person_outline),
-            ),
-            activeIcon: Padding(
-              padding: EdgeInsets.only(bottom: 4),
-              child: Icon(Icons.person),
-            ),
-            label: 'Profile',
-          ),
-        ],
+        ),
       ),
     );
   }

@@ -624,45 +624,104 @@ class _DeliveryPartnerDashboardState extends State<DeliveryPartnerDashboard> {
         ],
       ),
       body: _buildBody(),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          border: const Border(top: BorderSide(color: _cardBorder, width: 1)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.03),
-              blurRadius: 10,
-              offset: const Offset(0, -4),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        left: false,
+        right: false,
+        bottom: true,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+          child: Container(
+            height: 66,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(36),
+              border: Border.all(
+                color: const Color(0xFFE5E7EB),
+                width: 1.0,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 16,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
-          ],
+            child: Row(
+              children: [
+                _buildNavItem(
+                  index: 0,
+                  label: 'Available',
+                  icon: Icons.explore_outlined,
+                  activeIcon: Icons.explore_rounded,
+                  activeColor: _primaryCyan,
+                ),
+                _buildNavItem(
+                  index: 1,
+                  label: 'Deliveries',
+                  icon: Icons.two_wheeler_outlined,
+                  activeIcon: Icons.two_wheeler_rounded,
+                  activeColor: _primaryCyan,
+                ),
+                _buildNavItem(
+                  index: 2,
+                  label: 'Profile',
+                  icon: Icons.person_outline_rounded,
+                  activeIcon: Icons.person_rounded,
+                  activeColor: _primaryCyan,
+                ),
+              ],
+            ),
+          ),
         ),
-        child: BottomNavigationBar(
-          currentIndex: _currentIndex,
-          onTap: (index) => setState(() => _currentIndex = index),
-          backgroundColor: Colors.white,
-          elevation: 0,
-          type: BottomNavigationBarType.fixed,
-          selectedItemColor: _primaryCyan,
-          unselectedItemColor: _textMuted,
-          selectedLabelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
-          unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 12),
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.explore_outlined),
-              activeIcon: Icon(Icons.explore_rounded),
-              label: 'Available',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.two_wheeler_outlined),
-              activeIcon: Icon(Icons.two_wheeler_rounded),
-              label: 'Deliveries',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.person_outline_rounded),
-              activeIcon: Icon(Icons.person_rounded),
-              label: 'Profile',
-            ),
-          ],
+      ),
+    );
+  }
+
+  Widget _buildNavItem({
+    required int index,
+    required String label,
+    required IconData icon,
+    required IconData activeIcon,
+    required Color activeColor,
+  }) {
+    final isSelected = _currentIndex == index;
+    final color = isSelected ? activeColor : const Color(0xFF8E8E93);
+
+    return Expanded(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                isSelected ? activeIcon : icon,
+                color: color,
+                size: 24,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                  color: color,
+                  letterSpacing: -0.1,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1513,7 +1572,7 @@ class _DeliveryPartnerDashboardState extends State<DeliveryPartnerDashboard> {
 
     return ListView.builder(
       physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
       itemCount: docs.length,
       itemBuilder: (context, index) {
         final data = docs[index].data() as Map<String, dynamic>;

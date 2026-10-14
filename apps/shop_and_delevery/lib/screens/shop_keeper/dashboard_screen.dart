@@ -299,84 +299,110 @@ class _DashboardScreenState extends State<DashboardScreen> {
         index: _selectedIndex,
         children: pages,
       ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 16,
-              offset: const Offset(0, -4),
-            ),
-          ],
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.only(top: 6, bottom: 6),
-            child: BottomNavigationBar(
-              currentIndex: _selectedIndex,
-              onTap: (index) {
-                setState(() {
-                  _selectedIndex = index;
-                });
-              },
-              selectedItemColor: lightBlue,
-              unselectedItemColor: const Color(0xFF94A3B8),
-              backgroundColor: Colors.transparent,
-              elevation: 0,
-              iconSize: 20,
-              selectedFontSize: 11.5,
-              unselectedFontSize: 11,
-              selectedLabelStyle: const TextStyle(fontWeight: FontWeight.w700),
-              unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500),
-              type: BottomNavigationBarType.fixed,
-              items: const [
-                BottomNavigationBarItem(
-                  icon: Padding(
-                    padding: EdgeInsets.only(bottom: 3.0),
-                    child: Icon(Icons.dashboard_outlined),
-                  ),
-                  activeIcon: Padding(
-                    padding: EdgeInsets.only(bottom: 3.0),
-                    child: Icon(Icons.dashboard_rounded),
-                  ),
-                  label: 'Dashboard',
-                ),
-                BottomNavigationBarItem(
-                  icon: Padding(
-                    padding: EdgeInsets.only(bottom: 3.0),
-                    child: Icon(Icons.inventory_2_outlined),
-                  ),
-                  activeIcon: Padding(
-                    padding: EdgeInsets.only(bottom: 3.0),
-                    child: Icon(Icons.inventory_2_rounded),
-                  ),
-                  label: 'Inventory',
-                ),
-                BottomNavigationBarItem(
-                  icon: Padding(
-                    padding: EdgeInsets.only(bottom: 3.0),
-                    child: Icon(Icons.receipt_long_outlined),
-                  ),
-                  activeIcon: Padding(
-                    padding: EdgeInsets.only(bottom: 3.0),
-                    child: Icon(Icons.receipt_long_rounded),
-                  ),
-                  label: 'New Orders',
-                ),
-                BottomNavigationBarItem(
-                  icon: Padding(
-                    padding: EdgeInsets.only(bottom: 3.0),
-                    child: Icon(Icons.history_outlined),
-                  ),
-                  activeIcon: Padding(
-                    padding: EdgeInsets.only(bottom: 3.0),
-                    child: Icon(Icons.history_rounded),
-                  ),
-                  label: 'History',
+      bottomNavigationBar: SafeArea(
+        top: false,
+        left: false,
+        right: false,
+        bottom: true,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+          child: Container(
+            height: 66,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(36),
+              border: Border.all(
+                color: const Color(0xFFE5E7EB),
+                width: 1.0,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 16,
+                  offset: const Offset(0, 4),
                 ),
               ],
             ),
+            child: Row(
+              children: [
+                _buildNavItem(
+                  index: 0,
+                  label: 'Dashboard',
+                  icon: Icons.dashboard_outlined,
+                  activeIcon: Icons.dashboard_rounded,
+                  activeColor: lightBlue,
+                ),
+                _buildNavItem(
+                  index: 1,
+                  label: 'Inventory',
+                  icon: Icons.inventory_2_outlined,
+                  activeIcon: Icons.inventory_2_rounded,
+                  activeColor: lightBlue,
+                ),
+                _buildNavItem(
+                  index: 2,
+                  label: 'Orders',
+                  icon: Icons.receipt_long_outlined,
+                  activeIcon: Icons.receipt_long_rounded,
+                  activeColor: lightBlue,
+                ),
+                _buildNavItem(
+                  index: 3,
+                  label: 'History',
+                  icon: Icons.history_rounded,
+                  activeIcon: Icons.history_rounded,
+                  activeColor: lightBlue,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNavItem({
+    required int index,
+    required String label,
+    required IconData icon,
+    required IconData activeIcon,
+    required Color activeColor,
+  }) {
+    final isSelected = _selectedIndex == index;
+    final color = isSelected ? activeColor : const Color(0xFF8E8E93);
+
+    return Expanded(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          setState(() {
+            _selectedIndex = index;
+          });
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                isSelected ? activeIcon : icon,
+                color: color,
+                size: 24,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                  color: color,
+                  letterSpacing: -0.1,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
           ),
         ),
       ),
@@ -592,7 +618,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   // Recent Orders Stream
                   _buildRecentOrdersStream(lightBlue),
                   
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 96),
                 ],
               ),
             ),

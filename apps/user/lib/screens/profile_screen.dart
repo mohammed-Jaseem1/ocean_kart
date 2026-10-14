@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'edit_profile_screen.dart';
+import 'help_support_screen.dart';
+import 'terms_policy_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final bool isTab;
@@ -26,14 +27,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Map<String, dynamic>? userData;
   bool _isLoading = true;
-  List<Map<String, dynamic>> _savedAddresses = [];
-  bool _isDeletingAddress = false;
 
   @override
   void initState() {
     super.initState();
     _fetchUserData();
-    _loadSavedAddresses();
   }
 
   Future<void> _fetchUserData() async {
@@ -83,83 +81,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  Future<void> _loadSavedAddresses() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-    try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('addresses')
-          .orderBy('createdAt', descending: false)
-          .get();
-      if (mounted) {
-        setState(() {
-          _savedAddresses = snapshot.docs
-              .map((doc) => {'id': doc.id, ...doc.data()})
-              .toList();
-        });
-      }
-    } catch (e) {
-      debugPrint('Error loading addresses: $e');
-    }
-  }
-
-  Future<void> _deleteAddress(String addressId) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Delete Address',
-            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
-        content: const Text('Are you sure you want to remove this saved address?',
-            style: TextStyle(color: Color(0xFF475569))),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel',
-                style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFEF4444),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
-            ),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete',
-                style: TextStyle(fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
-    if (confirm == true) {
-      setState(() => _isDeletingAddress = true);
-      try {
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .collection('addresses')
-            .doc(addressId)
-            .delete();
-        setState(() {
-          _savedAddresses.removeWhere((a) => a['id'] == addressId);
-        });
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to delete: $e')),
-          );
-        }
-      } finally {
-        if (mounted) setState(() => _isDeletingAddress = false);
-      }
-    }
-  }
-
   Future<void> _handleLogout() async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -200,173 +121,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  void _showHelpSupportSheet() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-        ),
-        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 44,
-                height: 5,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF8B5CF6).withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: const Icon(Icons.headset_mic_rounded,
-                      color: Color(0xFF8B5CF6), size: 24),
-                ),
-                const SizedBox(width: 14),
-                const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Help & Support',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF0F172A),
-                      ),
-                    ),
-                    SizedBox(height: 2),
-                    Text(
-                      'We are here to assist you 24/7',
-                      style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B)),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            _buildSupportTile(
-              icon: Icons.phone_in_talk_rounded,
-              iconColor: const Color(0xFF10B981),
-              title: 'Customer Care Call',
-              subtitle: '+91 98765 43210',
-              onTap: () async {
-                final uri = Uri.parse('tel:+919876543210');
-                if (await canLaunchUrl(uri)) await launchUrl(uri);
-              },
-            ),
-            _buildSupportTile(
-              icon: Icons.chat_bubble_rounded,
-              iconColor: const Color(0xFF25D366),
-              title: 'WhatsApp Chat Support',
-              subtitle: 'Quick answers on WhatsApp',
-              onTap: () async {
-                final uri = Uri.parse('https://wa.me/919876543210?text=Hi%20OceanKart%20Support');
-                if (await canLaunchUrl(uri)) {
-                  await launchUrl(uri, mode: LaunchMode.externalApplication);
-                }
-              },
-            ),
-            _buildSupportTile(
-              icon: Icons.email_rounded,
-              iconColor: const Color(0xFF00B4D8),
-              title: 'Email Support',
-              subtitle: 'support@oceankart.com',
-              onTap: () async {
-                final uri = Uri.parse('mailto:support@oceankart.com?subject=OceanKart%20Help');
-                if (await canLaunchUrl(uri)) await launchUrl(uri);
-              },
-            ),
-            const SizedBox(height: 12),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.access_time_filled_rounded,
-                      size: 16, color: Color(0xFF64748B)),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Live support available daily from 6:00 AM – 9:00 PM',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF64748B),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
-  Widget _buildSupportTile({
-    required IconData icon,
-    required Color iconColor,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      child: ListTile(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        leading: Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: iconColor.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(icon, color: iconColor, size: 22),
-        ),
-        title: Text(
-          title,
-          style: const TextStyle(
-            fontWeight: FontWeight.w700,
-            fontSize: 14.5,
-            color: Color(0xFF0F172A),
-          ),
-        ),
-        subtitle: Text(
-          subtitle,
-          style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600),
-        ),
-        trailing: const Icon(Icons.arrow_forward_ios_rounded,
-            size: 15, color: Colors.grey),
-        onTap: onTap,
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -387,6 +142,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
 
     final phone = getPhone();
+
+    String getEmail() {
+      if (userData != null &&
+          userData!['email'] != null &&
+          userData!['email'].toString().trim().isNotEmpty) {
+        return userData!['email'].toString().trim();
+      }
+      final authEmail = FirebaseAuth.instance.currentUser?.email;
+      if (authEmail != null && authEmail.trim().isNotEmpty) return authEmail;
+      return '';
+    }
+
+    final email = getEmail();
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -446,14 +214,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           child: CircleAvatar(
                             radius: 46,
                             backgroundColor: const Color(0xFFE0F2FE),
-                            child: Text(
-                              initial,
-                              style: TextStyle(
-                                fontSize: 38,
-                                fontWeight: FontWeight.w900,
-                                color: _primaryBlue,
-                              ),
-                            ),
+                            backgroundImage: userData?['photoUrl'] != null &&
+                                    userData!['photoUrl'].toString().isNotEmpty
+                                ? NetworkImage(userData!['photoUrl'])
+                                : null,
+                            child: userData?['photoUrl'] != null &&
+                                    userData!['photoUrl'].toString().isNotEmpty
+                                ? null
+                                : Text(
+                                    initial,
+                                    style: TextStyle(
+                                      fontSize: 38,
+                                      fontWeight: FontWeight.w900,
+                                      color: _primaryBlue,
+                                    ),
+                                  ),
                           ),
                         ),
                         const SizedBox(height: 14),
@@ -491,6 +266,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ],
                           ),
                         ),
+                        if (email.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.email_outlined,
+                                    size: 13, color: _subtextColor),
+                                const SizedBox(width: 4),
+                                Text(
+                                  email,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: _subtextColor,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -518,7 +320,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     iconBgColor: const Color(0xFF00B4D8).withValues(alpha: 0.12),
                     iconColor: const Color(0xFF00B4D8),
                     title: 'Personal Information',
-                    subtitle: 'Edit your name, phone & account details',
+                    subtitle: 'Name, phone & delivery address',
                     onTap: () async {
                       final updated = await Navigator.push(
                         context,
@@ -535,123 +337,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     },
                   ),
 
-                  // 2. My Orders Tab
-                  _buildProfileTab(
-                    icon: Icons.receipt_long_rounded,
-                    iconBgColor: const Color(0xFF10B981).withValues(alpha: 0.12),
-                    iconColor: const Color(0xFF10B981),
-                    title: 'My Orders',
-                    subtitle: 'Track active orders & view purchase history',
-                    onTap: () {
-                      if (widget.onSwitchToOrders != null) {
-                        widget.onSwitchToOrders!();
-                      } else if (Navigator.canPop(context)) {
-                        Navigator.pop(context);
-                      }
-                    },
-                  ),
-
-                  // 3. Help & Support Tab
+                  // 2. Help & Support Tab
                   _buildProfileTab(
                     icon: Icons.headset_mic_rounded,
                     iconBgColor: const Color(0xFF8B5CF6).withValues(alpha: 0.12),
                     iconColor: const Color(0xFF8B5CF6),
                     title: 'Help & Support',
-                    subtitle: 'FAQs, contact support & chat assistance',
-                    onTap: _showHelpSupportSheet,
-                  ),
-
-                  // ── Saved Addresses Section (If any) ───────────────
-                  if (_savedAddresses.isNotEmpty) ...[
-                    const SizedBox(height: 24),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'Saved Addresses',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                          color: _textColor,
-                          letterSpacing: -0.2,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    ..._savedAddresses.map((addr) {
-                      final label = addr['label'] as String? ?? 'Address';
-                      final address = addr['address'] as String? ?? '';
-                      IconData labelIcon = Icons.location_on_rounded;
-                      if (label == 'Home') labelIcon = Icons.home_rounded;
-                      if (label == 'Work') labelIcon = Icons.work_rounded;
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 10),
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: const Color(0xFFE2E8F0)),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.02),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: _primaryBlue.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Icon(labelIcon,
-                                  color: _primaryBlue, size: 20),
-                            ),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    label,
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14,
-                                      color: _textColor,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 3),
-                                  Text(
-                                    address,
-                                    style: TextStyle(
-                                      fontSize: 12.5,
-                                      color: _subtextColor,
-                                      height: 1.3,
-                                    ),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            IconButton(
-                              icon: const Icon(
-                                Icons.delete_outline_rounded,
-                                color: Color(0xFFEF4444),
-                                size: 20,
-                              ),
-                              onPressed: _isDeletingAddress
-                                  ? null
-                                  : () =>
-                                      _deleteAddress(addr['id'] as String),
-                            ),
-                          ],
+                    subtitle: 'FAQs, live chat, support tickets & account deletion',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const HelpSupportScreen(),
                         ),
                       );
-                    }),
-                  ],
+                    },
+                  ),
+
+                  // 3. Terms & Privacy Policy Tab
+                  _buildProfileTab(
+                    icon: Icons.policy_rounded,
+                    iconBgColor: const Color(0xFF0EA5E9).withValues(alpha: 0.12),
+                    iconColor: const Color(0xFF0EA5E9),
+                    title: 'Terms & Privacy Policy',
+                    subtitle: 'Fresh catch standards, COD & privacy policies',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const TermsPolicyScreen(),
+                        ),
+                      );
+                    },
+                  ),
 
                   const SizedBox(height: 32),
 

@@ -5,6 +5,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'screens/auth/login_screen.dart';
+import 'screens/auth/user_registration.dart';
 import 'screens/dashboard_screen.dart';
 import 'services/otp_service.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -190,18 +191,24 @@ class _AuthGateState extends State<AuthGate> {
                     ),
                   );
                 } else {
+                  final mobile = data?['mobileNumber']?.toString().trim() ?? '';
+                  if (mobile.isEmpty) {
+                    return UserRegistrationPage(
+                      isGoogleUser: true,
+                      initialEmail: user.email ?? '',
+                      initialName: user.displayName ?? '',
+                      initialPhotoUrl: user.photoURL ?? '',
+                    );
+                  }
                   return const DashboardScreen();
                 }
               }
 
-              return const Scaffold(
-                body: Center(
-                  child: CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      Color(0xFF00B4D8),
-                    ),
-                  ),
-                ),
+              return UserRegistrationPage(
+                isGoogleUser: true,
+                initialEmail: user.email ?? '',
+                initialName: user.displayName ?? '',
+                initialPhotoUrl: user.photoURL ?? '',
               );
             },
           );

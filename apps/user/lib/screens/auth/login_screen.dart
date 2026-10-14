@@ -158,50 +158,52 @@ class _LoginScreenState extends State<LoginScreen> {
       if (userCredential.user != null) {
         final user = userCredential.user!;
         
-        // Check if user exists in Firestore
+        // Check if user exists in Firestore and has completed registration (has mobileNumber)
         final docRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
         final doc = await docRef.get();
         
-        if (!doc.exists) {
-          // Scenario A: Completely new user
-          await docRef.set({
-            'uid': user.uid,
-            'email': user.email ?? '',
-            'name': user.displayName ?? 'Google User',
-            'role': 'customer',
-            'emailVerified': true,
-            'createdAt': FieldValue.serverTimestamp(),
-            'status': 'active',
-          });
-        } else {
-          final data = doc.data() as Map<String, dynamic>;
-          
-          if (data['emailVerified'] == true || user.emailVerified) {
-            // Existing VERIFIED user - allow login
+        DocumentSnapshot? existingDoc = doc.exists ? doc : null;
+        if (existingDoc == null && user.email != null && user.email!.isNotEmpty) {
+          final emailQuery = await FirebaseFirestore.instance
+              .collection('users')
+              .where('email', isEqualTo: user.email!.trim())
+              .limit(1)
+              .get();
+          if (emailQuery.docs.isNotEmpty) {
+            existingDoc = emailQuery.docs.first;
+          }
+        }
+
+        final existingData = existingDoc?.data() as Map<String, dynamic>?;
+        final String existingMobile = (existingData?['mobileNumber'] ?? '').toString().trim();
+        final bool isRegistrationComplete = existingDoc != null && existingMobile.isNotEmpty;
+
+        if (isRegistrationComplete) {
+          // Existing user with complete registration
+          if (existingDoc.id != user.uid) {
+            await docRef.set(existingData!, SetOptions(merge: true));
           } else {
-            // Existing UNVERIFIED user: Sign out and redirect to registration page
-            await FirebaseAuth.instance.signOut();
-            await GoogleSignIn.instance.signOut();
-
-            if (mounted) {
-              setState(() {
-                _isLoading = false;
-              });
-
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Your email is not verified yet. Redirecting to registration to verify phone & account...'),
-                  backgroundColor: Colors.orange,
-                  duration: Duration(seconds: 4),
+            await docRef.update({
+              'emailVerified': true,
+              'status': 'active',
+            });
+          }
+          // AuthGate will see complete profile and proceed to DashboardScreen
+        } else {
+          // New user or incomplete registration:
+          // Do NOT create skeleton doc! Redirect to registration page to verify phone and set password.
+          if (mounted) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => UserRegistrationPage(
+                  isGoogleUser: true,
+                  initialEmail: user.email ?? '',
+                  initialName: user.displayName ?? '',
+                  initialPhotoUrl: user.photoURL ?? '',
                 ),
-              );
-
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const UserRegistrationPage()),
-              );
-            }
-            return; // Stop execution
+              ),
+            );
           }
         }
       }

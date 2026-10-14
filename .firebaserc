@@ -1,5 +1,14 @@
 {
   "projects": {
     "default": "oceankart-83bbd"
+  },
+  "targets": {
+    "oceankart-83bbd": {
+      "hosting": {
+        "admin": [
+          "oceankart-admin"
+        ]
+      }
+    }
   }
 }
